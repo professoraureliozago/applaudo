@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -15,26 +16,35 @@ def transcribe_audio_bytes(
 ) -> str:
     """Transcribe audio bytes using local faster-whisper or OpenAI API.
 
+    Uses a non-locked temporary file for Windows compatibility.
+
     Raises:
         RuntimeError: for provider/dependency/configuration issues.
     """
 
     suffix = Path(filename).suffix or ".wav"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
-        tmp.write(audio_bytes)
-        tmp.flush()
+    fd, temp_path = tempfile.mkstemp(suffix=suffix)
+
+    try:
+        with os.fdopen(fd, "wb") as tmp:
+            tmp.write(audio_bytes)
 
         if provider == "local":
-            return _transcribe_local(tmp.name, language=language, model_size=local_model_size)
+            return _transcribe_local(temp_path, language=language, model_size=local_model_size)
         if provider == "openai":
             return _transcribe_openai(
-                tmp.name,
+                temp_path,
                 language=language,
                 api_key=openai_api_key,
                 model=openai_model,
             )
 
-    raise RuntimeError("Provider de transcrição inválido. Use 'local' ou 'openai'.")
+        raise RuntimeError("Provider de transcrição inválido. Use 'local' ou 'openai'.")
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
 
 
 def _transcribe_local(file_path: str, language: str, model_size: str) -> str:
@@ -46,7 +56,13 @@ def _transcribe_local(file_path: str, language: str, model_size: str) -> str:
         ) from exc
 
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    segments, _ = model.transcribe(file_path, language=language, vad_filter=True)
+    try:
+        segments, _ = model.transcribe(file_path, language=language, vad_filter=True)
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "Falha ao transcrever áudio localmente. Verifique formato do arquivo e permissões da pasta temporária."
+        ) from exc
+
     text = " ".join(segment.text.strip() for segment in segments).strip()
     return text
 

@@ -43,3 +43,8 @@ streamlit run app.py
 - Captura de áudio em tempo real durante exame (sem upload manual).
 - Expandir todos os campos do formulário.
 - Melhorar layout do PDF para ficar idêntico ao modelo da clínica.
+
+## Solução de erro no Windows
+
+Se aparecia `Permission denied` no arquivo temporário (`.m4a`), esta versão já salva o áudio em arquivo temporário sem lock antes da transcrição local.
+
