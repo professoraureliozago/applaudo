@@ -11,13 +11,22 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-> Se você rodar `python app.py`, o sistema agora relança automaticamente com `streamlit run app.py`.
+> Se você rodar `python app.py`, o sistema relança automaticamente com `streamlit run app.py`.
 
 ## O que já faz
 
-- Preenche seções com base em palavras-chave usando templates JSON (`templates/colonoscopia_templates.json`).
-- Permite revisão manual por seção.
-- Gera PDF com cabeçalho e seções principais.
+- Aba **Gerar laudo**: aplica templates por palavras-chave na transcrição e permite revisão final antes do PDF.
+- Aba **Gerenciar modelos**: cadastra novos modelos por campo (nome, palavras-chave e texto) e salva no arquivo `templates/colonoscopia_templates.json`.
+- Edição avançada do JSON completo de templates dentro da interface.
+- Geração de PDF com cabeçalho e seções principais.
+
+## Exemplo rápido (criar modelo)
+
+1. Abra a aba **Gerenciar modelos**.
+2. Escolha o campo (ex.: `colon_descendente`).
+3. Preencha nome do modelo, palavras-chave e texto padrão.
+4. Clique em **Salvar modelo**.
+5. Volte para **Gerar laudo** e teste com uma transcrição contendo as palavras-chave.
 
 ## Próximos passos
 
