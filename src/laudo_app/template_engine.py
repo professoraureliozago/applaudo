@@ -1,5 +1,6 @@
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -20,13 +21,13 @@ class TemplateEngine:
             self.config = json.load(f)
 
     def render_from_transcript(self, transcript: str) -> Dict[str, str]:
-        transcript_lower = transcript.lower()
+        normalized_transcript = self._normalize_text(transcript)
         output: Dict[str, str] = {}
 
         for section_cfg in self.config.get("sections", []):
             section_id = section_cfg["id"]
             default_text = section_cfg.get("default", "")
-            best = self._match_section(section_cfg, transcript_lower)
+            best = self._match_section(section_cfg, normalized_transcript)
             if best:
                 output[section_id] = self._apply_placeholders(best.text, transcript)
             else:
@@ -35,17 +36,17 @@ class TemplateEngine:
         output["conclusao"] = self._build_conclusion(output)
         return output
 
-    def _match_section(self, section_cfg: Dict[str, Any], transcript_lower: str) -> MatchResult | None:
+    def _match_section(self, section_cfg: Dict[str, Any], normalized_transcript: str) -> MatchResult | None:
         section_hits = 0
         for trigger in section_cfg.get("triggers", []):
-            if trigger.lower() in transcript_lower:
+            if self._contains_term(normalized_transcript, trigger):
                 section_hits += 1
 
         best: MatchResult | None = None
         for model in section_cfg.get("models", []):
             score = 0
             for kw in model.get("keywords", []):
-                if kw.lower() in transcript_lower:
+                if self._contains_term(normalized_transcript, kw):
                     score += 1
 
             if section_hits > 0:
@@ -96,3 +97,17 @@ class TemplateEngine:
             return "\n".join([f"- {f}" for f in findings])
 
         return "Exame sem alterações macroscópicas relevantes."
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        text = text.lower()
+        text = "".join(ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn")
+        text = re.sub(r"[^\w\s]", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    def _contains_term(self, normalized_transcript: str, raw_term: str) -> bool:
+        normalized_term = self._normalize_text(raw_term)
+        if not normalized_term:
+            return False
+        return normalized_term in normalized_transcript

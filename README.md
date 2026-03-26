@@ -16,16 +16,21 @@ streamlit run app.py
 ## O que já faz
 
 - Aba **Gerar laudo**: aplica templates por palavras-chave na transcrição e permite revisão final antes do PDF.
-- Aba **Gerenciar modelos**: cadastra novos modelos por campo (nome, palavras-chave e texto) e salva no arquivo `templates/colonoscopia_templates.json`.
+- Aba **Gerenciar modelos**:
+  - cria novos modelos por campo,
+  - edita um modelo salvo ao clicar em **Editar**,
+  - exclui com confirmação em **2 cliques** no botão **Excluir (2 cliques)**,
+  - salva no arquivo `templates/colonoscopia_templates.json`.
 - Edição avançada do JSON completo de templates dentro da interface.
+- Matching mais robusto (ignora acentos/maiúsculas/pontuação) para facilitar reconhecimento dos modelos salvos.
 - Geração de PDF com cabeçalho e seções principais.
 
-## Exemplo rápido (criar modelo)
+## Exemplo rápido (criar/editar modelo)
 
 1. Abra a aba **Gerenciar modelos**.
 2. Escolha o campo (ex.: `colon_descendente`).
-3. Preencha nome do modelo, palavras-chave e texto padrão.
-4. Clique em **Salvar modelo**.
+3. Para novo modelo: preencha nome, palavras-chave e texto e clique em **Salvar modelo**.
+4. Para editar: clique em **Editar**, altere e clique em **Atualizar modelo**.
 5. Volte para **Gerar laudo** e teste com uma transcrição contendo as palavras-chave.
 
 ## Próximos passos

@@ -25,3 +25,12 @@ def test_defaults_when_no_match():
     rendered = engine.render_from_transcript("Texto sem termos clínicos mapeados.")
 
     assert rendered["reto"] == "Reto sem descrição específica."
+
+
+def test_matching_ignores_accents_and_punctuation():
+    engine = TemplateEngine("templates/colonoscopia_templates.json")
+    transcript = "No colon descendente: polipo sessil de 1 cm; realizada polipectomia!"
+
+    rendered = engine.render_from_transcript(transcript)
+
+    assert "pólipo séssil" in rendered["colon_descendente"].lower()

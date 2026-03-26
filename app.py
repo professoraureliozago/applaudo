@@ -43,7 +43,7 @@ def save_templates(data: dict[str, Any]) -> None:
 
 def render_template_manager(templates_data: dict[str, Any]) -> None:
     st.subheader("Modelos (templates) por campo")
-    st.caption("Aqui você cria/ajusta os modelos que serão aplicados por palavras-chave da narração.")
+    st.caption("Aqui você cria/edita os modelos aplicados por palavras-chave da narração.")
 
     sections = templates_data.get("sections", [])
     section_ids = [s.get("id", "") for s in sections]
@@ -54,40 +54,88 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
         st.warning("Seção não encontrada no arquivo de templates.")
         return
 
+    models = selected_section.setdefault("models", [])
     st.markdown("**Modelos atuais deste campo**")
-    models = selected_section.get("models", [])
+
     if models:
-        for idx, model in enumerate(models, start=1):
-            st.write(f"{idx}. **{model.get('name', 'sem_nome')}**")
-            st.write(f"   - Keywords: {', '.join(model.get('keywords', []))}")
-            st.write(f"   - Texto: {model.get('text', '')}")
+        for idx, model in enumerate(models):
+            st.write(f"**{idx + 1}. {model.get('name', 'sem_nome')}**")
+            st.write(f"- Keywords: {', '.join(model.get('keywords', []))}")
+            st.write(f"- Texto: {model.get('text', '')}")
+
+            c1, c2 = st.columns(2)
+            if c1.button("Editar", key=f"edit_{selected_id}_{idx}"):
+                st.session_state["editing_model"] = {"section": selected_id, "idx": idx}
+                st.rerun()
+
+            if c2.button("Excluir (2 cliques)", key=f"delete_{selected_id}_{idx}"):
+                pending = st.session_state.get("delete_pending")
+                current = f"{selected_id}:{idx}"
+                if pending == current:
+                    models.pop(idx)
+                    save_templates(templates_data)
+                    st.session_state["delete_pending"] = None
+                    st.success("Modelo excluído.")
+                    st.rerun()
+                else:
+                    st.session_state["delete_pending"] = current
+                    st.warning("Clique novamente em 'Excluir (2 cliques)' para confirmar exclusão.")
     else:
         st.info("Nenhum modelo cadastrado nesta seção ainda.")
 
-    with st.form("add_model_form"):
-        st.markdown("### Adicionar novo modelo")
-        model_name = st.text_input("Nome do modelo (ex.: polipo_sessil)")
-        keywords_csv = st.text_input("Palavras-chave (separadas por vírgula)")
+    edit_state = st.session_state.get("editing_model")
+    editing_this_section = bool(edit_state and edit_state.get("section") == selected_id)
+    edit_idx = int(edit_state.get("idx", -1)) if editing_this_section else -1
+
+    if editing_this_section and 0 <= edit_idx < len(models):
+        model_for_form = models[edit_idx]
+        form_title = f"Editando modelo: {model_for_form.get('name', 'sem_nome')}"
+        submit_label = "Atualizar modelo"
+    else:
+        model_for_form = {"name": "", "keywords": [], "text": ""}
+        form_title = "Adicionar novo modelo"
+        submit_label = "Salvar modelo"
+
+    with st.form("model_form"):
+        st.markdown(f"### {form_title}")
+        model_name = st.text_input("Nome do modelo", value=model_for_form.get("name", ""))
+        keywords_csv = st.text_input(
+            "Palavras-chave (separadas por vírgula)",
+            value=", ".join(model_for_form.get("keywords", [])),
+        )
         model_text = st.text_area(
             "Texto do modelo",
+            value=model_for_form.get("text", ""),
             placeholder="Ex.: Presença de pólipo séssil de {tamanho_cm} cm em cólon descendente...",
         )
-        submitted = st.form_submit_button("Salvar modelo")
+
+        col_a, col_b = st.columns(2)
+        submitted = col_a.form_submit_button(submit_label)
+        cancel_edit = col_b.form_submit_button("Cancelar edição")
+
+    if cancel_edit:
+        st.session_state["editing_model"] = None
+        st.rerun()
 
     if submitted:
         keywords = [k.strip() for k in keywords_csv.split(",") if k.strip()]
         if not model_name.strip() or not model_text.strip() or not keywords:
             st.error("Preencha nome, palavras-chave e texto do modelo.")
         else:
-            selected_section.setdefault("models", []).append(
-                {
-                    "name": model_name.strip(),
-                    "keywords": keywords,
-                    "text": model_text.strip(),
-                }
-            )
+            payload = {
+                "name": model_name.strip(),
+                "keywords": keywords,
+                "text": model_text.strip(),
+            }
+            if editing_this_section and 0 <= edit_idx < len(models):
+                models[edit_idx] = payload
+                st.success("Modelo atualizado com sucesso.")
+            else:
+                models.append(payload)
+                st.success("Modelo salvo com sucesso.")
+
             save_templates(templates_data)
-            st.success("Modelo salvo com sucesso. Ele já será usado na próxima geração de laudo.")
+            st.session_state["editing_model"] = None
             st.rerun()
 
     with st.expander("Edição avançada do JSON de templates"):
