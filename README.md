@@ -11,6 +11,8 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+> Se você rodar `python app.py`, o sistema agora relança automaticamente com `streamlit run app.py`.
+
 ## O que já faz
 
 - Preenche seções com base em palavras-chave usando templates JSON (`templates/colonoscopia_templates.json`).
