@@ -13,6 +13,7 @@ from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from src.laudo_app import ReportData, TemplateEngine
 from src.laudo_app.pdf_generator import generate_pdf
+from src.laudo_app.transcriber import transcribe_audio_bytes
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
 
@@ -154,14 +155,64 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
                 st.error(f"JSON inválido: {exc}")
 
 
+def render_auto_transcription() -> None:
+    st.markdown("### Transcrição automática de áudio")
+    audio_file = st.file_uploader(
+        "Envie o áudio do exame (wav/mp3/m4a)",
+        type=["wav", "mp3", "m4a", "ogg", "webm"],
+        key="audio_upload",
+    )
+
+    provider = st.radio(
+        "Provedor de transcrição",
+        options=["local", "openai"],
+        captions=["faster-whisper local (CPU)", "API OpenAI (requer chave)"],
+        horizontal=True,
+    )
+
+    local_model_size = "small"
+    openai_key = ""
+    openai_model = "whisper-1"
+
+    if provider == "local":
+        local_model_size = st.selectbox("Modelo local", ["tiny", "base", "small", "medium"], index=2)
+    else:
+        openai_key = st.text_input("OPENAI_API_KEY", type="password")
+        openai_model = st.text_input("Modelo API", value="whisper-1")
+
+    if st.button("Transcrever áudio"):
+        if not audio_file:
+            st.error("Envie um arquivo de áudio para transcrever.")
+            return
+
+        with st.spinner("Transcrevendo áudio..."):
+            try:
+                transcript = transcribe_audio_bytes(
+                    audio_bytes=audio_file.getvalue(),
+                    filename=audio_file.name,
+                    provider=provider,
+                    language="pt",
+                    local_model_size=local_model_size,
+                    openai_api_key=openai_key,
+                    openai_model=openai_model,
+                )
+                st.session_state["transcript_input"] = transcript
+                st.success("Transcrição concluída e carregada no campo abaixo.")
+            except RuntimeError as exc:
+                st.error(str(exc))
+
+
 def render_app() -> None:
     st.set_page_config(page_title="Laudo Colonoscopia por Áudio", layout="wide")
 
     st.title("Laudo de Colonoscopia (MVP)")
-    st.caption("Protótipo: transcrição/narração -> preenchimento por templates -> PDF")
+    st.caption("Protótipo: áudio/transcrição -> preenchimento por templates -> PDF")
 
     templates_data = load_templates()
     engine = TemplateEngine(str(TEMPLATES_PATH))
+
+    if "transcript_input" not in st.session_state:
+        st.session_state["transcript_input"] = ""
 
     with st.sidebar:
         st.header("Dados do exame")
@@ -180,11 +231,14 @@ def render_app() -> None:
         render_template_manager(templates_data)
 
     with tab_gerar:
+        render_auto_transcription()
+
         st.subheader("Narração/Transcrição")
-        transcript = st.text_area(
+        st.text_area(
             "Cole aqui a transcrição do áudio (ou narração convertida):",
             height=220,
             placeholder="Ex.: Reto com mucosa normal. No cólon descendente, pólipo séssil de 1 cm...",
+            key="transcript_input",
         )
 
         if st.button("Gerar laudo sugerido"):
@@ -197,7 +251,7 @@ def render_app() -> None:
                 hora_exame=hora_exame,
                 convenio=convenio,
             )
-            report.secoes = engine.render_from_transcript(transcript)
+            report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
             report.ensure_sections()
             st.session_state["report"] = report
 

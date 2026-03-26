@@ -1,6 +1,6 @@
 # MVP — Laudo de colonoscopia por narração
 
-Protótipo em Python para transformar narração/transcrição em laudo estruturado com exportação em PDF.
+Protótipo em Python para transformar áudio/narração em laudo estruturado com exportação em PDF.
 
 ## Como executar
 
@@ -15,26 +15,31 @@ streamlit run app.py
 
 ## O que já faz
 
-- Aba **Gerar laudo**: aplica templates por palavras-chave na transcrição e permite revisão final antes do PDF.
+- Aba **Gerar laudo**:
+  - transcreve automaticamente arquivo de áudio via **faster-whisper local** ou **API OpenAI**,
+  - aplica templates por palavras-chave na transcrição,
+  - permite revisão final antes do PDF.
 - Aba **Gerenciar modelos**:
   - cria novos modelos por campo,
-  - edita um modelo salvo ao clicar em **Editar**,
-  - exclui com confirmação em **2 cliques** no botão **Excluir (2 cliques)**,
+  - edita modelo salvo ao clicar em **Editar**,
+  - exclui com confirmação em **2 cliques**,
   - salva no arquivo `templates/colonoscopia_templates.json`.
 - Edição avançada do JSON completo de templates dentro da interface.
-- Matching mais robusto (ignora acentos/maiúsculas/pontuação) para facilitar reconhecimento dos modelos salvos.
+- Matching robusto (ignora acentos/maiúsculas/pontuação) para facilitar reconhecimento dos modelos.
 - Geração de PDF com cabeçalho e seções principais.
 
-## Exemplo rápido (criar/editar modelo)
+## Como usar transcrição automática
 
-1. Abra a aba **Gerenciar modelos**.
-2. Escolha o campo (ex.: `colon_descendente`).
-3. Para novo modelo: preencha nome, palavras-chave e texto e clique em **Salvar modelo**.
-4. Para editar: clique em **Editar**, altere e clique em **Atualizar modelo**.
-5. Volte para **Gerar laudo** e teste com uma transcrição contendo as palavras-chave.
+1. Na aba **Gerar laudo**, envie o áudio em `wav/mp3/m4a`.
+2. Escolha o provedor:
+   - `local` (faster-whisper): escolha o tamanho do modelo.
+   - `openai` (API): informe `OPENAI_API_KEY` e modelo (ex.: `whisper-1`).
+3. Clique em **Transcrever áudio**.
+4. O texto transcrito será preenchido automaticamente no campo de transcrição.
+5. Clique em **Gerar laudo sugerido**.
 
 ## Próximos passos
 
-- Integrar transcrição automática de áudio (Whisper local/API).
+- Captura de áudio em tempo real durante exame (sem upload manual).
 - Expandir todos os campos do formulário.
 - Melhorar layout do PDF para ficar idêntico ao modelo da clínica.
