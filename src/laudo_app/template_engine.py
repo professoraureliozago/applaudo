@@ -1,9 +1,9 @@
-import json
 import re
 import unicodedata
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List
+
+from .template_loader import load_template_config
 
 
 @dataclass
@@ -15,10 +15,15 @@ class MatchResult:
 
 
 class TemplateEngine:
-    def __init__(self, config_path: str) -> None:
-        self.config_path = Path(config_path)
-        with self.config_path.open("r", encoding="utf-8") as f:
-            self.config = json.load(f)
+    def __init__(self, config_path: str | None = None, config: dict[str, Any] | None = None) -> None:
+        if config is not None:
+            self.config = config
+            self.config_path = config_path or ""
+        elif config_path:
+            self.config_path = config_path
+            self.config = load_template_config(config_path)
+        else:
+            raise ValueError("Informe 'config_path' ou 'config' para inicializar TemplateEngine.")
 
     def render_from_transcript(self, transcript: str) -> Dict[str, str]:
         normalized_transcript = self._normalize_text(transcript)
@@ -99,7 +104,7 @@ class TemplateEngine:
         if findings:
             return "\n".join([f"- {f}" for f in findings])
 
-        return "Exame sem alterações macroscópicas relevantes."
+        return ""
 
     @staticmethod
     def _normalize_text(text: str) -> str:

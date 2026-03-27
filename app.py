@@ -15,6 +15,7 @@ from streamlit.runtime.scriptrunner import get_script_run_ctx
 from src.laudo_app import ReportData, TemplateEngine
 from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
+from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
@@ -33,8 +34,7 @@ def ensure_streamlit_context() -> None:
 
 
 def load_templates() -> dict[str, Any]:
-    with TEMPLATES_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    return load_template_config(str(TEMPLATES_PATH))
 
 
 def save_templates(data: dict[str, Any]) -> None:
@@ -46,6 +46,10 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
     st.subheader("Modelos (templates) por campo")
     sections = templates_data.get("sections", [])
     section_ids = [s.get("id", "") for s in sections]
+
+    if not section_ids:
+        st.warning("Nenhum campo encontrado nos templates. Corrija o JSON na edição avançada.")
+        return
 
     selected_id = st.selectbox("Campo do laudo", options=section_ids, key="tpl_section")
     selected_section = next((s for s in sections if s.get("id") == selected_id), None)
@@ -283,8 +287,14 @@ def render_app() -> None:
     st.title("Laudo de Colonoscopia (MVP)")
     st.caption("Protótipo: áudio/transcrição -> preenchimento por templates -> PDF")
 
-    templates_data = load_templates()
-    engine = TemplateEngine(str(TEMPLATES_PATH))
+    try:
+        templates_data = load_templates()
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.warning("Usando configuração mínima vazia para permitir correção no Gerenciar modelos.")
+        templates_data = {"sections": []}
+
+    engine = TemplateEngine(config=templates_data)
 
     st.session_state.setdefault("transcript_input", "")
     st.session_state.setdefault("recording_active", False)
