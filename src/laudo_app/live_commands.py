@@ -5,6 +5,25 @@ import unicodedata
 from dataclasses import dataclass
 
 
+START_TERMS = [
+    "gravar",
+    "grava",
+    "iniciar gravacao",
+    "iniciar",
+    "comecar gravacao",
+    "comecar",
+]
+
+STOP_TERMS = [
+    "parar",
+    "pare",
+    "pausar",
+    "pausa",
+    "encerrar gravacao",
+    "finalizar gravacao",
+]
+
+
 @dataclass
 class LiveCommandResult:
     recording_active: bool
@@ -14,22 +33,20 @@ class LiveCommandResult:
 
 def apply_live_command(transcript_chunk: str, recording_active: bool, current_draft: str) -> LiveCommandResult:
     normalized = _normalize(transcript_chunk)
+    command = _detect_command(normalized)
 
-    has_start = bool(re.search(r"\bgravar\b", normalized))
-    has_stop = bool(re.search(r"\bparar\b", normalized))
-
-    if has_stop:
+    if command == "stop":
         return LiveCommandResult(
             recording_active=False,
             updated_draft=current_draft,
-            status_message="Comando detectado: parar (captura pausada).",
+            status_message="Comando detectado: parar/pausar (captura pausada).",
         )
 
-    if has_start:
+    if command == "start":
         return LiveCommandResult(
             recording_active=True,
             updated_draft=current_draft,
-            status_message="Comando detectado: gravar (captura ativa).",
+            status_message="Comando detectado: gravar/iniciar (captura ativa).",
         )
 
     if recording_active:
@@ -43,8 +60,28 @@ def apply_live_command(transcript_chunk: str, recording_active: bool, current_dr
     return LiveCommandResult(
         recording_active=False,
         updated_draft=current_draft,
-        status_message="Trecho ignorado (diga 'gravar' para iniciar captura).",
+        status_message="Trecho ignorado (diga 'gravar', 'iniciar' ou 'começar' para iniciar captura).",
     )
+
+
+def _detect_command(normalized: str) -> str | None:
+    start_pos = _last_term_position(normalized, START_TERMS)
+    stop_pos = _last_term_position(normalized, STOP_TERMS)
+
+    if start_pos < 0 and stop_pos < 0:
+        return None
+    if stop_pos > start_pos:
+        return "stop"
+    return "start"
+
+
+def _last_term_position(text: str, terms: list[str]) -> int:
+    last = -1
+    for term in terms:
+        pattern = rf"\b{re.escape(term)}\b"
+        for match in re.finditer(pattern, text):
+            last = max(last, match.start())
+    return last
 
 
 def _normalize(text: str) -> str:

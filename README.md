@@ -49,9 +49,9 @@ Você pode repetir várias gravações curtas durante o exame e ir acumulando no
 
 No modo de microfone em trechos:
 
-- Se você disser **"gravar"**, o app ativa a captura cumulativa.
+- Comandos de início aceitos: **"gravar"**, **"grava"**, **"iniciar"**, **"começar"**.
+- Comandos de parada aceitos: **"parar"**, **"pare"**, **"pausar"**.
 - Enquanto ativo, cada novo trecho transcrito é **anexado automaticamente** ao rascunho.
-- Se você disser **"parar"**, o app pausa a captura cumulativa.
 
 Também há botões de fallback (**Ativar captura** / **Pausar captura**) caso o comando de voz não seja reconhecido.
 
@@ -71,6 +71,17 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 python -m streamlit run app.py
 ```
+
+
+## Rodar pelo VS Code (botão Run/F5)
+
+Incluí a configuração `.vscode/launch.json` para executar Streamlit corretamente pelo VS Code.
+
+- Abra **Run and Debug**
+- Escolha **Streamlit: app.py**
+- Pressione **F5**
+
+Isso evita precisar digitar manualmente `python -m streamlit run app.py` toda vez.
 
 ## O que já faz
 
