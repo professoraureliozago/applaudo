@@ -2,70 +2,124 @@
   "sections": [
     {
       "id": "preparo_paciente",
-      "triggers": ["preparo"],
+      "triggers": [
+        "preparo"
+      ],
       "default": "Preparo não descrito durante a narração.",
       "models": [
         {
-          "name": "adequado",
-          "keywords": ["preparo adequado", "resíduos líquidos", "bom preparo"],
-          "text": "Preparo adequado com discreta quantidade de resíduos líquidos."
+          "name": "inadequado",
+          "keywords": [
+            "preparo inadequado",
+            "resíduos fecais",
+            "limpeza ruim"
+          ],
+          "text": "Preparo inadequado, com prejuízo parcial da análise mucosa."
         },
         {
-          "name": "inadequado",
-          "keywords": ["preparo inadequado", "resíduos fecais", "limpeza ruim"],
-          "text": "Preparo inadequado, com prejuízo parcial da análise mucosa."
+          "name": "adequado 9",
+          "keywords": [
+            "adequado 9",
+            "adequado 09",
+            "adequado nove",
+            "Boston 9",
+            "escala de boston 9"
+          ],
+          "text": "Preparo adequado sem resíduos. Escala de Boston de 09 pontos."
+        },
+        {
+          "name": "adequado 8",
+          "keywords": [
+            "adequado 8",
+            "8",
+            "Boston 8",
+            "escala de Boston 8"
+          ],
+          "text": "Preparo adequado com discreta quantidade de líquidos em um segmento do cólon. Escala de Boston de 08 pontos."
         }
       ]
     },
     {
       "id": "reto",
-      "triggers": ["reto"],
+      "triggers": [
+        "reto"
+      ],
       "default": "Reto sem descrição específica.",
       "models": [
         {
           "name": "normal",
-          "keywords": ["reto normal", "mucosa normal", "calibre normal"],
+          "keywords": [
+            "reto normal",
+            "mucosa normal",
+            "calibre normal"
+          ],
           "text": "O reto tem calibre e mucosa normais."
         }
       ]
     },
     {
       "id": "colon_descendente",
-      "triggers": ["cólon descendente", "colon descendente", "descendente"],
+      "triggers": [
+        "cólon descendente",
+        "colon descendente",
+        "descendente"
+      ],
       "default": "Cólon descendente sem descrição específica.",
       "models": [
         {
           "name": "normal",
-          "keywords": ["mucosa normal", "luz preservada"],
+          "keywords": [
+            "mucosa normal",
+            "luz preservada"
+          ],
           "text": "O cólon descendente apresenta luz e mucosa normais."
         },
         {
           "name": "polipo_sessil",
-          "keywords": ["pólipo séssil", "polipo sessil", "polipectomia"],
+          "keywords": [
+            "pólipo séssil",
+            "polipo sessil",
+            "polipectomia"
+          ],
           "text": "Presença de pólipo séssil de {tamanho_cm} cm em cólon descendente, realizada polipectomia e material enviado para estudo anatomopatológico."
         }
       ]
     },
     {
       "id": "ceco",
-      "triggers": ["ceco", "óstio apendicular", "ostio apendicular"],
+      "triggers": [
+        "ceco",
+        "óstio apendicular",
+        "ostio apendicular"
+      ],
       "default": "Ceco sem descrição específica.",
       "models": [
         {
           "name": "identificado",
-          "keywords": ["óstio apendicular", "convergência das tênias", "ceco identificado"],
+          "keywords": [
+            "óstio apendicular",
+            "convergência das tênias",
+            "ceco identificado"
+          ],
           "text": "O ceco é normal e foi identificado pelo óstio apendicular e convergência das tênias."
         }
       ]
     },
     {
       "id": "observacoes",
-      "triggers": ["observação", "obs", "canal anal"],
+      "triggers": [
+        "observação",
+        "obs",
+        "canal anal"
+      ],
       "default": "Sem observações adicionais.",
       "models": [
         {
           "name": "canal_anal",
-          "keywords": ["não é indicado", "canal anal"],
+          "keywords": [
+            "não é indicado",
+            "canal anal"
+          ],
           "text": "Este exame não é indicado para avaliação das doenças do canal anal."
         }
       ]
