@@ -195,7 +195,9 @@ def render_auto_transcription() -> None:
     provider, local_model_size, openai_key, openai_model = _get_transcription_settings()
 
     status = "ATIVA" if st.session_state["recording_active"] else "PAUSADA"
-    st.info(f"Captura por comando de voz: **{status}**. Diga 'gravar' para iniciar e 'parar' para pausar.")
+    st.info(f"Captura por comando de voz: **{status}**. Diga 'gravar'/'iniciar' para ativar e 'parar'/'pausar' para pausar.")
+
+    st.caption("Fluxo recomendado: 1) grave um trecho no microfone; 2) clique em 'Processar trecho do microfone agora'; 3) veja a última transcrição e status abaixo.")
 
     b1, b2 = st.columns(2)
     if b1.button("Ativar captura"):  # fallback manual
@@ -205,9 +207,18 @@ def render_auto_transcription() -> None:
 
     st.markdown("**Modo 1: Microfone em tempo real por trechos (automático e cumulativo)**")
     mic_audio = st.audio_input("Gravar trecho do exame", key="audio_input_live")
+    auto_mode = st.checkbox("Processar automaticamente novos trechos", value=True)
 
     c_proc1, c_proc2 = st.columns(2)
-    if c_proc1.button("Processar trecho do microfone agora"):
+    manual_process = c_proc1.button("Processar trecho do microfone agora")
+    if c_proc2.button("Diagnóstico de comando"):
+        if st.session_state.get("last_voice_transcript"):
+            st.write(f"Última transcrição: {st.session_state['last_voice_transcript']}")
+            st.write(f"Status: {st.session_state.get('last_voice_status', '')}")
+        else:
+            st.write("Ainda não há transcrição de trecho de microfone.")
+
+    if manual_process:
         if not mic_audio:
             st.warning("Grave um trecho no microfone antes de processar.")
         else:
@@ -220,14 +231,8 @@ def render_auto_transcription() -> None:
                 force=True,
             )
 
-    if c_proc2.button("Diagnóstico de comando"):
-        if st.session_state.get("last_voice_transcript"):
-            st.write(f"Última transcrição: {st.session_state['last_voice_transcript']}")
-        else:
-            st.write("Ainda não há transcrição de trecho de microfone.")
-
     # processamento automático ao detectar novo trecho
-    if mic_audio:
+    if auto_mode and mic_audio:
         _handle_mic_chunk(
             mic_audio=mic_audio,
             provider=provider,

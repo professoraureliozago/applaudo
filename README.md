@@ -49,11 +49,13 @@ Você pode repetir várias gravações curtas durante o exame e ir acumulando no
 
 No modo de microfone em trechos:
 
+Fluxo recomendado: grave um trecho, clique em **Processar trecho do microfone agora**, e veja a **Última transcrição detectada**.
+
 - Comandos de início aceitos: **"gravar"**, **"grava"**, **"iniciar"**, **"começar"**.
 - Comandos de parada aceitos: **"parar"**, **"pare"**, **"pausar"**.
 - Enquanto ativo, cada novo trecho transcrito é **anexado automaticamente** ao rascunho.
 
-Também há botões de fallback (**Ativar captura** / **Pausar captura**) e um botão **Processar trecho do microfone agora** para forçar o processamento quando o navegador não dispara automaticamente.
+Também há botões de fallback (**Ativar captura** / **Pausar captura**) e um botão **Processar trecho do microfone agora**. Se o comando de voz não estiver funcionando, use esse botão e confira a área de diagnóstico com a última transcrição detectada.
 
 ## Erro comum: `ModuleNotFoundError: No module named 'streamlit'`
 
