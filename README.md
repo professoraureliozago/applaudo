@@ -103,6 +103,15 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Matching robusto (ignora acentos/maiúsculas/pontuação) para facilitar reconhecimento dos modelos.
 - Layout de PDF mais próximo do modelo da clínica (título, cabeçalho clínico e seções em sequência).
 
+
+## Ordem no PDF (modelo da clínica)
+
+O PDF segue a ordem:
+
+Indicação, Preparo do paciente, Duração do exame, Altura atingida, Reto, Cólon Sigmóide, Cólon Descendente, Ângulo Esplênico, Cólon Transverso, Ângulo Hepático, Cólon Ascendente, Ceco, Íleo Terminal, Conclusão, Observação 1 e Observação 2.
+
+Somente campos preenchidos são exibidos no documento final.
+
 ## Próximos passos
 
 - Acionamento automático de transcrição em janelas de tempo (ex.: a cada 20–30 segundos).

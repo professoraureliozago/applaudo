@@ -1,9 +1,26 @@
 {
   "sections": [
     {
+      "id": "indicacao",
+      "triggers": ["indicação", "indicacao"],
+      "default": "",
+      "models": [
+        {
+          "name": "rastreio",
+          "keywords": ["rastreamento", "screening", "check-up"],
+          "text": "Exame indicado para rastreamento de neoplasia colorretal."
+        },
+        {
+          "name": "sangramento",
+          "keywords": ["sangramento", "hematoquezia", "sangue nas fezes"],
+          "text": "Exame indicado por quadro de sangramento digestivo baixo."
+        }
+      ]
+    },
+    {
       "id": "preparo_paciente",
       "triggers": ["preparo"],
-      "default": "Preparo não descrito durante a narração.",
+      "default": "",
       "models": [
         {
           "name": "adequado",
@@ -20,7 +37,7 @@
     {
       "id": "duracao",
       "triggers": ["duração", "duracao", "minutos"],
-      "default": "Duração não descrita.",
+      "default": "",
       "models": [
         {
           "name": "duracao_padrao",
@@ -32,7 +49,7 @@
     {
       "id": "altura_atingida",
       "triggers": ["altura atingida", "atingiu", "ceco"],
-      "default": "Altura atingida não descrita.",
+      "default": "",
       "models": [
         {
           "name": "ceco",
@@ -44,7 +61,7 @@
     {
       "id": "reto",
       "triggers": ["reto"],
-      "default": "Reto sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "normal",
@@ -56,7 +73,7 @@
     {
       "id": "colon_sigmoide",
       "triggers": ["sigmoide", "cólon sigmoide", "colon sigmoide"],
-      "default": "Cólon sigmoide sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "normal",
@@ -68,7 +85,7 @@
     {
       "id": "colon_descendente",
       "triggers": ["cólon descendente", "colon descendente", "descendente"],
-      "default": "Cólon descendente sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "normal",
@@ -85,7 +102,7 @@
     {
       "id": "angulo_esplenico",
       "triggers": ["ângulo esplênico", "angulo esplenico"],
-      "default": "Ângulo esplênico sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "ultrapassado",
@@ -97,7 +114,7 @@
     {
       "id": "colon_transverso",
       "triggers": ["transverso", "cólon transverso", "colon transverso"],
-      "default": "Cólon transverso sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "normal",
@@ -109,7 +126,7 @@
     {
       "id": "angulo_hepatico",
       "triggers": ["ângulo hepático", "angulo hepatico"],
-      "default": "Ângulo hepático sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "ultrapassado",
@@ -121,7 +138,7 @@
     {
       "id": "colon_ascendente",
       "triggers": ["ascendente", "cólon ascendente", "colon ascendente"],
-      "default": "Cólon ascendente sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "normal",
@@ -133,7 +150,7 @@
     {
       "id": "ceco",
       "triggers": ["ceco", "óstio apendicular", "ostio apendicular"],
-      "default": "Ceco sem descrição específica.",
+      "default": "",
       "models": [
         {
           "name": "identificado",
@@ -143,26 +160,50 @@
       ]
     },
     {
-      "id": "conclusao",
-      "triggers": ["conclusão", "conclusao"],
-      "default": "Exame sem alterações macroscópicas relevantes.",
+      "id": "ileo_terminal",
+      "triggers": ["íleo terminal", "ileo terminal"],
+      "default": "",
       "models": [
         {
           "name": "normal",
-          "keywords": ["restante do exame normal", "sem alterações"],
-          "text": "Exame sem alterações macroscópicas relevantes."
+          "keywords": ["íleo terminal normal", "ileo terminal normal", "mucosa ileal normal"],
+          "text": "Íleo terminal com mucosa preservada, sem alterações."
         }
       ]
     },
     {
-      "id": "observacoes",
-      "triggers": ["observação", "obs", "canal anal"],
-      "default": "Sem observações adicionais.",
+      "id": "conclusao",
+      "triggers": ["conclusão", "conclusao"],
+      "default": "",
+      "models": [
+        {
+          "name": "normal",
+          "keywords": ["restante do exame normal", "sem alterações"],
+          "text": "Restante do exame macroscopicamente normal."
+        }
+      ]
+    },
+    {
+      "id": "observacao_1",
+      "triggers": ["observação 1", "obs 1", "observacao 1"],
+      "default": "",
       "models": [
         {
           "name": "canal_anal",
           "keywords": ["não é indicado", "canal anal"],
           "text": "Este exame não é indicado para avaliação das doenças do canal anal."
+        }
+      ]
+    },
+    {
+      "id": "observacao_2",
+      "triggers": ["observação 2", "obs 2", "observacao 2"],
+      "default": "",
+      "models": [
+        {
+          "name": "seguimento",
+          "keywords": ["seguimento", "retorno", "controle"],
+          "text": "Sugerido seguimento clínico conforme correlação com anatomopatológico."
         }
       ]
     }

@@ -20,11 +20,11 @@ def test_polipo_in_descendente_generates_template_with_size():
     assert "pólipo" in rendered["conclusao"].lower()
 
 
-def test_defaults_when_no_match():
+def test_defaults_when_no_match_are_blank_for_optional_sections():
     engine = TemplateEngine("templates/colonoscopia_templates.json")
     rendered = engine.render_from_transcript("Texto sem termos clínicos mapeados.")
 
-    assert rendered["reto"] == "Reto sem descrição específica."
+    assert rendered["reto"] == ""
 
 
 def test_matching_ignores_accents_and_punctuation():
