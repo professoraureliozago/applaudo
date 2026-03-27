@@ -53,7 +53,7 @@ No modo de microfone em trechos:
 - Comandos de parada aceitos: **"parar"**, **"pare"**, **"pausar"**.
 - Enquanto ativo, cada novo trecho transcrito é **anexado automaticamente** ao rascunho.
 
-Também há botões de fallback (**Ativar captura** / **Pausar captura**) caso o comando de voz não seja reconhecido.
+Também há botões de fallback (**Ativar captura** / **Pausar captura**) e um botão **Processar trecho do microfone agora** para forçar o processamento quando o navegador não dispara automaticamente.
 
 ## Erro comum: `ModuleNotFoundError: No module named 'streamlit'`
 
@@ -82,6 +82,8 @@ Incluí a configuração `.vscode/launch.json` para executar Streamlit corretame
 - Pressione **F5**
 
 Isso evita precisar digitar manualmente `python -m streamlit run app.py` toda vez.
+
+Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamente os requisitos antes de iniciar (preLaunchTask).
 
 ## O que já faz
 

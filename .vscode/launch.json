@@ -8,7 +8,8 @@
       "module": "streamlit",
       "args": ["run", "app.py"],
       "console": "integratedTerminal",
-      "justMyCode": true
+      "justMyCode": true,
+      "preLaunchTask": "Install requirements"
     }
   ]
 }
