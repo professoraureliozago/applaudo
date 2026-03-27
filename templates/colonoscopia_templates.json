@@ -1,11 +1,33 @@
 {
   "sections": [
     {
+      "id": "indicacao",
+      "triggers": ["indicação", "indicacao"],
+      "default": "",
+      "models": [
+        {
+          "name": "rastreio",
+          "keywords": ["rastreamento", "screening", "check-up"],
+          "text": "Exame indicado para rastreamento de neoplasia colorretal."
+        },
+        {
+          "name": "sangramento",
+          "keywords": ["sangramento", "hematoquezia", "sangue nas fezes"],
+          "text": "Exame indicado por quadro de sangramento digestivo baixo."
+        }
+      ]
+    },
+    {
       "id": "preparo_paciente",
+<<<<<<< HEAD
       "triggers": [
         "preparo"
       ],
       "default": "Preparo não descrito durante a narração.",
+=======
+      "triggers": ["preparo"],
+      "default": "",
+>>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "inadequado",
@@ -40,11 +62,40 @@
       ]
     },
     {
+      "id": "duracao",
+      "triggers": ["duração", "duracao", "minutos"],
+      "default": "",
+      "models": [
+        {
+          "name": "duracao_padrao",
+          "keywords": ["aproximadamente 30 minutos", "trinta minutos", "30 minutos"],
+          "text": "Duração do exame de aproximadamente 30 minutos."
+        }
+      ]
+    },
+    {
+      "id": "altura_atingida",
+      "triggers": ["altura atingida", "atingiu", "ceco"],
+      "default": "",
+      "models": [
+        {
+          "name": "ceco",
+          "keywords": ["até o ceco", "atingiu o ceco", "introduzido até o ceco"],
+          "text": "O colonoscópio foi introduzido pelo ânus até o ceco."
+        }
+      ]
+    },
+    {
       "id": "reto",
+<<<<<<< HEAD
       "triggers": [
         "reto"
       ],
       "default": "Reto sem descrição específica.",
+=======
+      "triggers": ["reto"],
+      "default": "",
+>>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "normal",
@@ -58,13 +109,30 @@
       ]
     },
     {
+      "id": "colon_sigmoide",
+      "triggers": ["sigmoide", "cólon sigmoide", "colon sigmoide"],
+      "default": "",
+      "models": [
+        {
+          "name": "normal",
+          "keywords": ["sigmoide normal", "mucosa íntegra", "luz conservada"],
+          "text": "O sigmoide tem luz conservada com paredes cobertas com mucosa íntegra."
+        }
+      ]
+    },
+    {
       "id": "colon_descendente",
+<<<<<<< HEAD
       "triggers": [
         "cólon descendente",
         "colon descendente",
         "descendente"
       ],
       "default": "Cólon descendente sem descrição específica.",
+=======
+      "triggers": ["cólon descendente", "colon descendente", "descendente"],
+      "default": "",
+>>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "normal",
@@ -86,13 +154,66 @@
       ]
     },
     {
+      "id": "angulo_esplenico",
+      "triggers": ["ângulo esplênico", "angulo esplenico"],
+      "default": "",
+      "models": [
+        {
+          "name": "ultrapassado",
+          "keywords": ["ultrapassado sem dificuldades", "sem dificuldades no ângulo esplênico"],
+          "text": "O ângulo esplênico foi ultrapassado sem dificuldades."
+        }
+      ]
+    },
+    {
+      "id": "colon_transverso",
+      "triggers": ["transverso", "cólon transverso", "colon transverso"],
+      "default": "",
+      "models": [
+        {
+          "name": "normal",
+          "keywords": ["transverso normal", "haustrações normais", "mucosa normal no transverso"],
+          "text": "O cólon transverso tem calibre, haustrações e mucosa normais."
+        }
+      ]
+    },
+    {
+      "id": "angulo_hepatico",
+      "triggers": ["ângulo hepático", "angulo hepatico"],
+      "default": "",
+      "models": [
+        {
+          "name": "ultrapassado",
+          "keywords": ["ângulo hepático ultrapassado", "ultrapassado sem dificuldades"],
+          "text": "O ângulo hepático foi ultrapassado sem dificuldades."
+        }
+      ]
+    },
+    {
+      "id": "colon_ascendente",
+      "triggers": ["ascendente", "cólon ascendente", "colon ascendente"],
+      "default": "",
+      "models": [
+        {
+          "name": "normal",
+          "keywords": ["ascendente normal", "mucosa preservada", "amplo"],
+          "text": "O cólon ascendente é amplo e com mucosa preservada."
+        }
+      ]
+    },
+    {
       "id": "ceco",
+<<<<<<< HEAD
       "triggers": [
         "ceco",
         "óstio apendicular",
         "ostio apendicular"
       ],
       "default": "Ceco sem descrição específica.",
+=======
+      "triggers": ["ceco", "óstio apendicular", "ostio apendicular"],
+      "default": "",
+>>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "identificado",
@@ -106,6 +227,7 @@
       ]
     },
     {
+<<<<<<< HEAD
       "id": "observacoes",
       "triggers": [
         "observação",
@@ -113,6 +235,35 @@
         "canal anal"
       ],
       "default": "Sem observações adicionais.",
+=======
+      "id": "ileo_terminal",
+      "triggers": ["íleo terminal", "ileo terminal"],
+      "default": "",
+      "models": [
+        {
+          "name": "normal",
+          "keywords": ["íleo terminal normal", "ileo terminal normal", "mucosa ileal normal"],
+          "text": "Íleo terminal com mucosa preservada, sem alterações."
+        }
+      ]
+    },
+    {
+      "id": "conclusao",
+      "triggers": ["conclusão", "conclusao"],
+      "default": "",
+      "models": [
+        {
+          "name": "normal",
+          "keywords": ["restante do exame normal", "sem alterações"],
+          "text": "Restante do exame macroscopicamente normal."
+        }
+      ]
+    },
+    {
+      "id": "observacao_1",
+      "triggers": ["observação 1", "obs 1", "observacao 1"],
+      "default": "",
+>>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "canal_anal",
@@ -121,6 +272,18 @@
             "canal anal"
           ],
           "text": "Este exame não é indicado para avaliação das doenças do canal anal."
+        }
+      ]
+    },
+    {
+      "id": "observacao_2",
+      "triggers": ["observação 2", "obs 2", "observacao 2"],
+      "default": "",
+      "models": [
+        {
+          "name": "seguimento",
+          "keywords": ["seguimento", "retorno", "controle"],
+          "text": "Sugerido seguimento clínico conforme correlação com anatomopatológico."
         }
       ]
     }

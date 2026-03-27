@@ -3,6 +3,7 @@ from typing import Dict
 
 
 DEFAULT_SECTIONS = [
+    "indicacao",
     "preparo_paciente",
     "duracao",
     "altura_atingida",
@@ -14,8 +15,10 @@ DEFAULT_SECTIONS = [
     "angulo_hepatico",
     "colon_ascendente",
     "ceco",
+    "ileo_terminal",
     "conclusao",
-    "observacoes",
+    "observacao_1",
+    "observacao_2",
 ]
 
 

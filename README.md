@@ -49,11 +49,13 @@ Você pode repetir várias gravações curtas durante o exame e ir acumulando no
 
 No modo de microfone em trechos:
 
+Fluxo recomendado: grave um trecho, clique em **Processar trecho do microfone agora**, e veja a **Última transcrição detectada**.
+
 - Comandos de início aceitos: **"gravar"**, **"grava"**, **"iniciar"**, **"começar"**.
 - Comandos de parada aceitos: **"parar"**, **"pare"**, **"pausar"**.
 - Enquanto ativo, cada novo trecho transcrito é **anexado automaticamente** ao rascunho.
 
-Também há botões de fallback (**Ativar captura** / **Pausar captura**) e um botão **Processar trecho do microfone agora** para forçar o processamento quando o navegador não dispara automaticamente.
+Também há botões de fallback (**Ativar captura** / **Pausar captura**) e um botão **Processar trecho do microfone agora**. Se o comando de voz não estiver funcionando, use esse botão e confira a área de diagnóstico com a última transcrição detectada.
 
 ## Erro comum: `ModuleNotFoundError: No module named 'streamlit'`
 
@@ -90,6 +92,7 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Aba **Gerar laudo**:
   - transcreve automaticamente áudio via **faster-whisper local** ou **API OpenAI**,
   - aplica templates por palavras-chave na transcrição,
+  - cobre todos os campos do formulário padrão (preparo, duração, altura atingida, segmentos do cólon, conclusão e observações),
   - permite revisão final antes do PDF.
 - Aba **Gerenciar modelos**:
   - cria novos modelos por campo,
@@ -98,13 +101,22 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
   - salva no arquivo `templates/colonoscopia_templates.json`.
 - Edição avançada do JSON completo de templates dentro da interface.
 - Matching robusto (ignora acentos/maiúsculas/pontuação) para facilitar reconhecimento dos modelos.
-- Geração de PDF com cabeçalho e seções principais.
+- Layout de PDF mais próximo do modelo da clínica (título, cabeçalho clínico e seções em sequência).
+
+
+## Ordem no PDF (modelo da clínica)
+
+O PDF segue a ordem:
+
+Indicação, Preparo do paciente, Duração do exame, Altura atingida, Reto, Cólon Sigmóide, Cólon Descendente, Ângulo Esplênico, Cólon Transverso, Ângulo Hepático, Cólon Ascendente, Ceco, Íleo Terminal, Conclusão, Observação 1 e Observação 2.
+
+Somente campos preenchidos são exibidos no documento final.
 
 ## Próximos passos
 
 - Acionamento automático de transcrição em janelas de tempo (ex.: a cada 20–30 segundos).
-- Expandir todos os campos do formulário.
-- Melhorar layout do PDF para ficar idêntico ao modelo da clínica.
+- Acionamento hands-free contínuo (sem clique por trecho).
+- Inserção automática de imagens do exame no PDF (quando disponíveis).
 
 ## Solução de erro no Windows
 

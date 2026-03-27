@@ -33,7 +33,10 @@ class TemplateEngine:
             else:
                 output[section_id] = default_text
 
-        output["conclusao"] = self._build_conclusion(output)
+        current_conclusion = output.get("conclusao", "").strip()
+        if not current_conclusion:
+            output["conclusao"] = self._build_conclusion(output)
+
         return output
 
     def _match_section(self, section_cfg: Dict[str, Any], normalized_transcript: str) -> MatchResult | None:
