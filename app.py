@@ -155,14 +155,7 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
                 st.error(f"JSON inválido: {exc}")
 
 
-def render_auto_transcription() -> None:
-    st.markdown("### Transcrição automática de áudio")
-    audio_file = st.file_uploader(
-        "Envie o áudio do exame (wav/mp3/m4a)",
-        type=["wav", "mp3", "m4a", "ogg", "webm"],
-        key="audio_upload",
-    )
-
+def _get_transcription_settings() -> tuple[str, str, str, str]:
     provider = st.radio(
         "Provedor de transcrição",
         options=["local", "openai"],
@@ -180,26 +173,80 @@ def render_auto_transcription() -> None:
         openai_key = st.text_input("OPENAI_API_KEY", type="password")
         openai_model = st.text_input("Modelo API", value="whisper-1")
 
-    if st.button("Transcrever áudio"):
-        if not audio_file:
-            st.error("Envie um arquivo de áudio para transcrever.")
-            return
+    return provider, local_model_size, openai_key, openai_model
 
-        with st.spinner("Transcrevendo áudio..."):
-            try:
-                transcript = transcribe_audio_bytes(
-                    audio_bytes=audio_file.getvalue(),
-                    filename=audio_file.name,
-                    provider=provider,
-                    language="pt",
-                    local_model_size=local_model_size,
-                    openai_api_key=openai_key,
-                    openai_model=openai_model,
-                )
-                st.session_state["transcript_input"] = transcript
-                st.success("Transcrição concluída e carregada no campo abaixo.")
-            except RuntimeError as exc:
-                st.error(str(exc))
+
+def _transcribe_and_append(audio_bytes: bytes, filename: str, provider: str, local_model_size: str, openai_key: str, openai_model: str) -> None:
+    with st.spinner("Transcrevendo áudio..."):
+        try:
+            transcript = transcribe_audio_bytes(
+                audio_bytes=audio_bytes,
+                filename=filename,
+                provider=provider,
+                language="pt",
+                local_model_size=local_model_size,
+                openai_api_key=openai_key,
+                openai_model=openai_model,
+            )
+            previous = st.session_state.get("transcript_input", "").strip()
+            st.session_state["transcript_input"] = f"{previous} {transcript}".strip() if previous else transcript
+            st.success("Trecho transcrito e adicionado ao rascunho.")
+        except RuntimeError as exc:
+            st.error(str(exc))
+
+
+def render_auto_transcription() -> None:
+    st.markdown("### Transcrição automática de áudio")
+
+    provider, local_model_size, openai_key, openai_model = _get_transcription_settings()
+
+    st.markdown("**Modo 1: Gravação no microfone (tempo real por trechos)**")
+    st.caption("Grave um trecho, transcreva e ele será anexado ao rascunho do laudo.")
+    mic_audio = st.audio_input("Gravar trecho do exame", key="audio_input_live")
+
+    if st.button("Transcrever trecho gravado"):
+        if not mic_audio:
+            st.error("Grave um trecho no microfone antes de transcrever.")
+        else:
+            _transcribe_and_append(
+                audio_bytes=mic_audio.getvalue(),
+                filename=mic_audio.name or "audio_live.wav",
+                provider=provider,
+                local_model_size=local_model_size,
+                openai_key=openai_key,
+                openai_model=openai_model,
+            )
+
+    st.markdown("**Modo 2: Upload de arquivo de áudio**")
+    uploaded_audio = st.file_uploader(
+        "Envie o áudio do exame (wav/mp3/m4a)",
+        type=["wav", "mp3", "m4a", "ogg", "webm"],
+        key="audio_upload",
+    )
+
+    if st.button("Transcrever arquivo enviado"):
+        if not uploaded_audio:
+            st.error("Envie um arquivo de áudio para transcrever.")
+        else:
+            _transcribe_and_append(
+                audio_bytes=uploaded_audio.getvalue(),
+                filename=uploaded_audio.name,
+                provider=provider,
+                local_model_size=local_model_size,
+                openai_key=openai_key,
+                openai_model=openai_model,
+            )
+
+    c1, c2 = st.columns(2)
+    if c1.button("Limpar rascunho da transcrição"):
+        st.session_state["transcript_input"] = ""
+        st.success("Rascunho limpo.")
+
+    if c2.button("Usar exemplo de narração"):
+        st.session_state["transcript_input"] = (
+            "Reto com mucosa normal. No cólon descendente, pólipo séssil de 1 cm, realizada polipectomia."
+        )
+        st.success("Exemplo carregado no rascunho.")
 
 
 def render_app() -> None:
