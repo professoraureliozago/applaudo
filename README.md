@@ -92,6 +92,7 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Aba **Gerar laudo**:
   - transcreve automaticamente áudio via **faster-whisper local** ou **API OpenAI**,
   - aplica templates por palavras-chave na transcrição,
+  - cobre todos os campos do formulário padrão (preparo, duração, altura atingida, segmentos do cólon, conclusão e observações),
   - permite revisão final antes do PDF.
 - Aba **Gerenciar modelos**:
   - cria novos modelos por campo,
@@ -100,13 +101,13 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
   - salva no arquivo `templates/colonoscopia_templates.json`.
 - Edição avançada do JSON completo de templates dentro da interface.
 - Matching robusto (ignora acentos/maiúsculas/pontuação) para facilitar reconhecimento dos modelos.
-- Geração de PDF com cabeçalho e seções principais.
+- Layout de PDF mais próximo do modelo da clínica (título, cabeçalho clínico e seções em sequência).
 
 ## Próximos passos
 
 - Acionamento automático de transcrição em janelas de tempo (ex.: a cada 20–30 segundos).
-- Expandir todos os campos do formulário.
-- Melhorar layout do PDF para ficar idêntico ao modelo da clínica.
+- Acionamento hands-free contínuo (sem clique por trecho).
+- Inserção automática de imagens do exame no PDF (quando disponíveis).
 
 ## Solução de erro no Windows
 
