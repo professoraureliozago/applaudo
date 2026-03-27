@@ -37,13 +37,23 @@ Na aba **Gerar laudo** agora existem dois modos:
 
 1. **Modo 1: Gravação no microfone (tempo real por trechos)**
    - Clique em **Gravar trecho do exame**.
-   - Depois clique em **Transcrever trecho gravado**.
-   - O texto transcrito é anexado automaticamente ao rascunho.
+   - Ao finalizar o trecho, a transcrição acontece automaticamente.
+   - O texto é anexado ao rascunho quando a captura estiver ativa.
 
 2. **Modo 2: Upload de arquivo de áudio**
    - Fluxo anterior, para quando você já tiver um arquivo gravado.
 
 Você pode repetir várias gravações curtas durante o exame e ir acumulando no rascunho.
+
+## Captura por comando de voz: "gravar" / "parar" (novo)
+
+No modo de microfone em trechos:
+
+- Se você disser **"gravar"**, o app ativa a captura cumulativa.
+- Enquanto ativo, cada novo trecho transcrito é **anexado automaticamente** ao rascunho.
+- Se você disser **"parar"**, o app pausa a captura cumulativa.
+
+Também há botões de fallback (**Ativar captura** / **Pausar captura**) caso o comando de voz não seja reconhecido.
 
 ## Erro comum: `ModuleNotFoundError: No module named 'streamlit'`
 
