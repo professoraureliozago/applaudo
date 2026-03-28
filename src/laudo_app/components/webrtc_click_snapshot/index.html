@@ -22,6 +22,7 @@
         border-radius: 10px;
         background: #111;
         display: block;
+        cursor: pointer;
       }
       .hint {
         margin-top: 8px;
@@ -47,7 +48,6 @@
         display: none;
       }
     </style>
-    <script src="https://unpkg.com/streamlit-component-lib@1.4.0/dist/index.js"></script>
   </head>
   <body>
     <div class="wrapper">
@@ -59,7 +59,6 @@
     <canvas id="canvas"></canvas>
 
     <script>
-      const Streamlit = window.Streamlit
       const video = document.getElementById("preview")
       const canvas = document.getElementById("canvas")
       const errorEl = document.getElementById("error")
@@ -70,12 +69,35 @@
       let requestedWidth = 960
       let requestedHeight = 540
 
+      function postToStreamlit(type, payload = {}) {
+        window.parent.postMessage(
+          {
+            isStreamlitMessage: true,
+            type,
+            ...payload,
+          },
+          "*",
+        )
+      }
+
+      function setFrameHeight(height) {
+        postToStreamlit("streamlit:setFrameHeight", { height })
+      }
+
+      function setComponentValue(value) {
+        postToStreamlit("streamlit:setComponentValue", { value })
+      }
+
+      function setComponentReady() {
+        postToStreamlit("streamlit:componentReady", { apiVersion: 1 })
+      }
+
       function updateHeight() {
         const videoHeight = video.videoHeight || requestedHeight
         const ratio = requestedHeight / requestedWidth
         const fallbackHeight = Math.floor(video.clientWidth * ratio)
         const height = Math.max(videoHeight, fallbackHeight, 260)
-        Streamlit.setFrameHeight(height + 52)
+        setFrameHeight(height + 52)
       }
 
       function setError(message) {
@@ -112,7 +134,7 @@
         const ctx = canvas.getContext("2d")
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         const dataUrl = canvas.toDataURL(imageFormat, imageQuality)
-        Streamlit.setComponentValue({
+        setComponentValue({
           data_url: dataUrl,
           timestamp: Date.now(),
           width: canvas.width,
@@ -121,8 +143,7 @@
         })
       }
 
-      function onRender(event) {
-        const args = event.detail.args || {}
+      function onRender(args) {
         imageFormat = args.image_format || "image/jpeg"
         imageQuality = args.image_quality ?? 0.92
         requestedWidth = args.width || 960
@@ -130,13 +151,21 @@
         ensureStream()
       }
 
+      window.addEventListener("message", (event) => {
+        const message = event.data
+        if (!message || message.type !== "streamlit:render") {
+          return
+        }
+        const args = message.args || {}
+        onRender(args)
+      })
+
       video.addEventListener("loadedmetadata", updateHeight)
       window.addEventListener("resize", updateHeight)
       video.addEventListener("click", capture)
 
-      Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender)
-      Streamlit.setComponentReady()
-      Streamlit.setFrameHeight(320)
+      setComponentReady()
+      setFrameHeight(320)
     </script>
   </body>
 </html>
