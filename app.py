@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
+from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
 
@@ -294,6 +296,7 @@ def render_image_capture_tab() -> None:
     st.subheader("Captura e seleção de imagens")
     st.caption("Capture fotos durante o exame e marque as que devem ir para o laudo.")
 
+    st.markdown("#### Captura padrão")
     camera_photo = st.camera_input("Visualização da captura (clique para tirar foto)", key="camera_live")
     if st.button("Salvar foto capturada"):
         if not camera_photo:
@@ -306,6 +309,17 @@ def render_image_capture_tab() -> None:
             auto_caption = infer_caption_from_text(context_text)
             saved = save_captured_image(camera_photo.getvalue(), suffix=suffix, caption=auto_caption)
             st.success(f"Imagem salva: {saved.name} ({auto_caption})")
+
+    st.markdown("#### Captura WebRTC custom por clique no frame")
+    st.caption("Habilite o modo custom para exibir um frame de vídeo contínuo. Clique no próprio frame para capturar a imagem.")
+    use_webrtc_custom = st.toggle("Habilitar captura WebRTC custom", value=False)
+    if use_webrtc_custom:
+        snapshot_bytes = render_webrtc_click_snapshot(key="exam-webrtc-click", width=960, height=540)
+        if snapshot_bytes:
+            context_text = st.session_state.get("transcript_input", "") or st.session_state.get("last_voice_transcript", "")
+            auto_caption = infer_caption_from_text(context_text)
+            saved = save_captured_image(snapshot_bytes, suffix=".jpg", caption=auto_caption)
+            st.success(f"Snapshot salvo por clique: {saved.name} ({auto_caption})")
 
     st.markdown("---")
     st.markdown("### Galeria de imagens salvas")
@@ -327,13 +341,17 @@ def render_image_capture_tab() -> None:
         if checked:
             selected_paths.append(str(img))
 
-    if st.button("Atualizar imagens selecionadas para o laudo"):
-        st.session_state["selected_gallery_paths"] = selected_paths
-        st.success(f"{len(selected_paths)} imagem(ns) marcadas para anexar no laudo.")
+    st.session_state["selected_gallery_paths"] = selected_paths
 
     current = st.session_state.get("selected_gallery_paths", [])
     if current:
-        st.info(f"Imagens atualmente marcadas: {len(current)}")
+        st.info(f"Imagens atualmente marcadas para o PDF: {len(current)} (aprox. {ceil(len(current) / 4)} página(s) de imagens)")
+        st.markdown("#### Miniaturas selecionadas para PDF")
+        selected_cols = st.columns(4)
+        for idx, path in enumerate(current):
+            col = selected_cols[idx % 4]
+            col.image(path, use_container_width=True)
+            col.caption(get_image_caption(Path(path)))
 
 
 def render_app() -> None:
@@ -369,12 +387,13 @@ def render_app() -> None:
         hora_exame = st.time_input("Hora", value=now.time().replace(second=0, microsecond=0)).strftime("%H:%M")
 
         st.markdown("---")
-        st.markdown("**Imagens para o PDF (até 4)**")
-        uploaded_images = []
-        for idx in range(4):
-            img_file = st.file_uploader(f"Imagem {idx + 1}", type=["jpg", "jpeg", "png"], key=f"pdf_img_{idx}")
-            if img_file:
-                uploaded_images.append(img_file.getvalue())
+        st.markdown("**Imagens enviadas manualmente para o PDF (sem limite fixo)**")
+        uploaded_images = st.file_uploader(
+            "Envie uma ou mais imagens",
+            type=["jpg", "jpeg", "png"],
+            accept_multiple_files=True,
+            key="pdf_imgs_multi",
+        )
 
     tab_gerar, tab_modelos, tab_imagens = st.tabs(["Gerar laudo", "Gerenciar modelos", "Imagens"])
     with tab_modelos:
@@ -400,7 +419,7 @@ def render_app() -> None:
                 data_exame=data_exame,
                 hora_exame=hora_exame,
                 convenio=convenio,
-                image_bytes=gallery_bytes + uploaded_images,
+                image_bytes=gallery_bytes + [img.getvalue() for img in uploaded_images],
                 image_captions=gallery_captions + manual_captions,
             )
             report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
