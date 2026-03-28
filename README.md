@@ -49,6 +49,10 @@ Você pode repetir várias gravações curtas durante o exame e ir acumulando no
 
 No modo de microfone em trechos:
 
+
+> Observação importante: por segurança do navegador, o início/parada da **captura física do microfone** ainda depende da interação no componente de gravação.
+> Os comandos de voz (`gravar`/`parar`) controlam o estado de captura lógica do laudo (anexar/pausar transcrição) após o trecho ser processado.
+
 Fluxo recomendado: grave um trecho, clique em **Processar trecho do microfone agora**, e veja a **Última transcrição detectada**.
 
 - Comandos de início aceitos: **"gravar"**, **"grava"**, **"iniciar"**, **"começar"**.
@@ -104,13 +108,25 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Layout de PDF mais próximo do modelo da clínica (título, cabeçalho clínico e seções em sequência).
 
 
+
+## Captura e seleção de imagens do exame
+
+- Abra a aba **Imagens** durante o exame.
+- Use a visualização da câmera para capturar e salvar fotos em `captured_images/`.
+- A galeria abre na mesma aba para marcar as imagens que irão para o laudo.
+- As imagens marcadas são anexadas na lateral direita do PDF, em blocos de até 4 imagens por página.
+
 ## Ordem no PDF (modelo da clínica)
+
+O PDF segue o modelo com cabeçalho em laranja, corpo em duas colunas e área no lado direito para 4 imagens do exame.
 
 O PDF segue a ordem:
 
 Indicação, Preparo do paciente, Duração do exame, Altura atingida, Reto, Cólon Sigmóide, Cólon Descendente, Ângulo Esplênico, Cólon Transverso, Ângulo Hepático, Cólon Ascendente, Ceco, Íleo Terminal, Conclusão, Observação 1 e Observação 2.
 
 Somente campos preenchidos são exibidos no documento final.
+
+Rodapé com linha separadora e endereço: Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369.
 
 ## Próximos passos
 

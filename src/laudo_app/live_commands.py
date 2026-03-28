@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 
 START_TERMS = [
@@ -68,11 +69,34 @@ def _detect_command(normalized: str) -> str | None:
     start_pos = _last_term_position(normalized, START_TERMS)
     stop_pos = _last_term_position(normalized, STOP_TERMS)
 
+    # fallback fuzzy detection for ASR imperfections (e.g., "gavar", "pausarh")
+    fuzzy = _fuzzy_command_from_tokens(normalized)
+    if fuzzy == "start" and start_pos < 0:
+        start_pos = 0
+    if fuzzy == "stop" and stop_pos < 0:
+        stop_pos = 0
+
     if start_pos < 0 and stop_pos < 0:
         return None
     if stop_pos > start_pos:
         return "stop"
     return "start"
+
+
+def _fuzzy_command_from_tokens(text: str) -> str | None:
+    tokens = text.split()
+    if not tokens:
+        return None
+
+    if any(_is_similar(token, ["gravar", "grava", "iniciar", "comecar"]) for token in tokens):
+        return "start"
+    if any(_is_similar(token, ["parar", "pare", "pausar", "pausa"]) for token in tokens):
+        return "stop"
+    return None
+
+
+def _is_similar(token: str, candidates: list[str]) -> bool:
+    return any(SequenceMatcher(None, token, cand).ratio() >= 0.8 for cand in candidates)
 
 
 def _last_term_position(text: str, terms: list[str]) -> int:

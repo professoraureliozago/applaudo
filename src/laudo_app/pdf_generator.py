@@ -4,7 +4,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image as RLImage
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .models import ReportData
 
@@ -37,15 +38,52 @@ def _has_meaningful_content(text: str) -> bool:
     return bool(text and text.strip())
 
 
+def _build_image_panel(image_bytes: list[bytes], body_style: ParagraphStyle) -> list:
+    panel: list = []
+    image_count = min(4, len(image_bytes))
+
+    for i in range(4):
+        if i < image_count:
+            image = RLImage(BytesIO(image_bytes[i]), width=50 * mm, height=34 * mm)
+            image.hAlign = "CENTER"
+            panel.append(image)
+        else:
+            placeholder = Table(
+                [[Paragraph(f"Imagem {i + 1}", body_style)]],
+                colWidths=[50 * mm],
+                rowHeights=[34 * mm],
+            )
+            placeholder.setStyle(
+                TableStyle(
+                    [
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("TEXTCOLOR", (0, 0), (-1, -1), colors.grey),
+                    ]
+                )
+            )
+            panel.append(placeholder)
+        panel.append(Spacer(1, 2 * mm))
+
+    return panel
+
+
+def _chunk_images(image_bytes: list[bytes], chunk_size: int = 4) -> list[list[bytes]]:
+    if not image_bytes:
+        return [[]]
+    return [image_bytes[i : i + chunk_size] for i in range(0, len(image_bytes), chunk_size)]
+
+
 def generate_pdf(report: ReportData) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         topMargin=12 * mm,
-        bottomMargin=12 * mm,
-        leftMargin=14 * mm,
-        rightMargin=14 * mm,
+        bottomMargin=10 * mm,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
     )
 
     styles = getSampleStyleSheet()
@@ -65,16 +103,17 @@ def generate_pdf(report: ReportData) -> bytes:
         fontSize=13,
     )
     laudo_title_style = ParagraphStyle("LaudoTitle", parent=styles["Heading3"], alignment=1, fontSize=12)
-    section_style = ParagraphStyle("Section", parent=styles["Heading4"], fontSize=11, leading=13, spaceAfter=2)
-    body_style = ParagraphStyle("Body", parent=styles["Normal"], fontSize=10.5, leading=13)
+    section_style = ParagraphStyle("Section", parent=styles["Heading4"], fontSize=10.5, leading=12, spaceAfter=1)
+    body_style = ParagraphStyle("Body", parent=styles["Normal"], fontSize=9.5, leading=12)
+    footer_style = ParagraphStyle("Footer", parent=styles["Normal"], alignment=1, fontSize=9, textColor=colors.HexColor("#d26f2a"))
 
     story = []
 
     story.append(Paragraph("Videocolonoscopia", title_style))
     story.append(Paragraph("Dr. Aurélio Fabiano Ribeiro Zago", subtitle_style))
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
     story.append(Paragraph("<u><b>Laudo de Videocolonoscopia</b></u>", laudo_title_style))
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     header_data = [
         [
@@ -94,23 +133,44 @@ def generate_pdf(report: ReportData) -> bytes:
         ],
     ]
 
-    header_table = Table(header_data, colWidths=[100 * mm, 35 * mm, 30 * mm])
-    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    header_table = Table(header_data, colWidths=[104 * mm, 34 * mm, 28 * mm])
+    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
     story.append(header_table)
+    story.append(Spacer(1, 2 * mm))
+
+    separator = Table([[" "]], colWidths=[184 * mm], rowHeights=[0.5 * mm])
+    separator.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), colors.black)]))
+    story.append(separator)
     story.append(Spacer(1, 2.5 * mm))
 
-    line = Table([[" "]], colWidths=[170 * mm], rowHeights=[0.5 * mm])
-    line.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), colors.black)]))
-    story.append(line)
-    story.append(Spacer(1, 3 * mm))
-
+    left_column: list = []
     for key, label in FIELD_ORDER:
         raw_text = report.secoes.get(key, "")
         if not _has_meaningful_content(raw_text):
             continue
-        story.append(Paragraph(f"<b>{label}</b>", section_style))
-        story.append(Paragraph(_normalize_text_for_pdf(raw_text), body_style))
-        story.append(Spacer(1, 2.5 * mm))
+        left_column.append(Paragraph(f"<b>{label}</b>", section_style))
+        left_column.append(Paragraph(_normalize_text_for_pdf(raw_text), body_style))
+        left_column.append(Spacer(1, 1.5 * mm))
+
+    if not left_column:
+        left_column.append(Paragraph("Sem campos preenchidos para exibição.", body_style))
+
+    image_chunks = _chunk_images(report.image_bytes, chunk_size=4)
+    for idx, chunk in enumerate(image_chunks):
+        current_left = left_column if idx == 0 else [Paragraph("<b>Imagens adicionais</b>", section_style)]
+        right_column = _build_image_panel(chunk, body_style)
+        body_table = Table([[current_left, right_column]], colWidths=[132 * mm, 52 * mm])
+        body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(body_table)
+        if idx < len(image_chunks) - 1:
+            story.append(PageBreak())
+
+    story.append(Spacer(1, 3 * mm))
+    footer_line = Table([[" "]], colWidths=[184 * mm], rowHeights=[0.4 * mm])
+    footer_line.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), colors.black)]))
+    story.append(footer_line)
+    story.append(Spacer(1, 1.5 * mm))
+    story.append(Paragraph("Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369", footer_style))
 
     doc.build(story)
     return buffer.getvalue()

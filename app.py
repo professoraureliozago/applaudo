@@ -13,8 +13,10 @@ import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from src.laudo_app import ReportData, TemplateEngine
+from src.laudo_app.image_store import list_captured_images, load_selected_images, save_captured_image
 from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
+from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
@@ -33,8 +35,7 @@ def ensure_streamlit_context() -> None:
 
 
 def load_templates() -> dict[str, Any]:
-    with TEMPLATES_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    return load_template_config(str(TEMPLATES_PATH))
 
 
 def save_templates(data: dict[str, Any]) -> None:
@@ -46,6 +47,10 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
     st.subheader("Modelos (templates) por campo")
     sections = templates_data.get("sections", [])
     section_ids = [s.get("id", "") for s in sections]
+
+    if not section_ids:
+        st.warning("Nenhum campo encontrado nos templates. Corrija o JSON na edição avançada.")
+        return
 
     selected_id = st.selectbox("Campo do laudo", options=section_ids, key="tpl_section")
     selected_section = next((s for s in sections if s.get("id") == selected_id), None)
@@ -196,6 +201,7 @@ def render_auto_transcription() -> None:
 
     status = "ATIVA" if st.session_state["recording_active"] else "PAUSADA"
     st.info(f"Captura por comando de voz: **{status}**. Diga 'gravar'/'iniciar' para ativar e 'parar'/'pausar' para pausar.")
+    st.caption("A captura física do microfone no navegador ainda exige clicar para gravar; os comandos de voz controlam a anexação ao laudo após transcrição do trecho.")
 
     st.caption("Fluxo recomendado: 1) grave um trecho no microfone; 2) clique em 'Processar trecho do microfone agora'; 3) veja a última transcrição e status abaixo.")
 
@@ -278,19 +284,69 @@ def render_auto_transcription() -> None:
         st.success("Exemplo carregado no rascunho.")
 
 
+def render_image_capture_tab() -> None:
+    st.subheader("Captura e seleção de imagens")
+    st.caption("Capture fotos durante o exame e marque as que devem ir para o laudo.")
+
+    camera_photo = st.camera_input("Visualização da captura (clique para tirar foto)", key="camera_live")
+    if st.button("Salvar foto capturada"):
+        if not camera_photo:
+            st.warning("Capture uma imagem antes de salvar.")
+        else:
+            suffix = ".jpg"
+            if camera_photo.type == "image/png":
+                suffix = ".png"
+            saved = save_captured_image(camera_photo.getvalue(), suffix=suffix)
+            st.success(f"Imagem salva: {saved.name}")
+
+    st.markdown("---")
+    st.markdown("### Galeria de imagens salvas")
+    images = list_captured_images()
+
+    if not images:
+        st.info("Nenhuma imagem salva ainda.")
+        return
+
+    st.caption("Marque as imagens que deseja anexar ao laudo.")
+    cols = st.columns(4)
+    selected_paths: list[str] = []
+
+    for idx, img in enumerate(images):
+        col = cols[idx % 4]
+        col.image(str(img), use_container_width=True)
+        checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{img.name}")
+        if checked:
+            selected_paths.append(str(img))
+
+    if st.button("Atualizar imagens selecionadas para o laudo"):
+        st.session_state["selected_gallery_paths"] = selected_paths
+        st.success(f"{len(selected_paths)} imagem(ns) marcadas para anexar no laudo.")
+
+    current = st.session_state.get("selected_gallery_paths", [])
+    if current:
+        st.info(f"Imagens atualmente marcadas: {len(current)}")
+
+
 def render_app() -> None:
     st.set_page_config(page_title="Laudo Colonoscopia por Áudio", layout="wide")
     st.title("Laudo de Colonoscopia (MVP)")
     st.caption("Protótipo: áudio/transcrição -> preenchimento por templates -> PDF")
 
-    templates_data = load_templates()
-    engine = TemplateEngine(str(TEMPLATES_PATH))
+    try:
+        templates_data = load_templates()
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.warning("Usando configuração mínima vazia para permitir correção no Gerenciar modelos.")
+        templates_data = {"sections": []}
+
+    engine = TemplateEngine(config=templates_data)
 
     st.session_state.setdefault("transcript_input", "")
     st.session_state.setdefault("recording_active", False)
     st.session_state.setdefault("last_mic_chunk_hash", None)
     st.session_state.setdefault("last_voice_transcript", "")
     st.session_state.setdefault("last_voice_status", "")
+    st.session_state.setdefault("selected_gallery_paths", [])
 
     with st.sidebar:
         st.header("Dados do exame")
@@ -303,9 +359,19 @@ def render_app() -> None:
         data_exame = st.date_input("Data", value=now.date()).strftime("%d/%m/%Y")
         hora_exame = st.time_input("Hora", value=now.time().replace(second=0, microsecond=0)).strftime("%H:%M")
 
-    tab_gerar, tab_modelos = st.tabs(["Gerar laudo", "Gerenciar modelos"])
+        st.markdown("---")
+        st.markdown("**Imagens para o PDF (até 4)**")
+        uploaded_images = []
+        for idx in range(4):
+            img_file = st.file_uploader(f"Imagem {idx + 1}", type=["jpg", "jpeg", "png"], key=f"pdf_img_{idx}")
+            if img_file:
+                uploaded_images.append(img_file.getvalue())
+
+    tab_gerar, tab_modelos, tab_imagens = st.tabs(["Gerar laudo", "Gerenciar modelos", "Imagens"])
     with tab_modelos:
         render_template_manager(templates_data)
+    with tab_imagens:
+        render_image_capture_tab()
 
     with tab_gerar:
         render_auto_transcription()
@@ -321,6 +387,7 @@ def render_app() -> None:
                 data_exame=data_exame,
                 hora_exame=hora_exame,
                 convenio=convenio,
+                image_bytes=load_selected_images(st.session_state.get("selected_gallery_paths", [])) + uploaded_images,
             )
             report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
             report.ensure_sections()
