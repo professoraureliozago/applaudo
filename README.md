@@ -113,8 +113,9 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 
 - Abra a aba **Imagens** durante o exame.
 - Use a visualização da câmera para capturar e salvar fotos em `captured_images/`.
-- A galeria abre na mesma aba para marcar as imagens que irão para o laudo.
-- As imagens marcadas são anexadas na lateral direita do PDF, em blocos de até 4 imagens por página.
+- A galeria abre na mesma aba com miniaturas e legenda automática para marcar as imagens que irão para o laudo.
+- As imagens marcadas são anexadas na lateral direita do PDF, em blocos de 4 imagens por página (gerando páginas adicionais conforme necessário).
+- Cada imagem recebe legenda automática (ex.: ceco, pós-polipectomia) exibida abaixo da foto no PDF.
 
 ## Ordem no PDF (modelo da clínica)
 

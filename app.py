@@ -13,7 +13,13 @@ import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from src.laudo_app import ReportData, TemplateEngine
-from src.laudo_app.image_store import list_captured_images, load_selected_images, save_captured_image
+from src.laudo_app.image_store import (
+    get_image_caption,
+    infer_caption_from_text,
+    list_captured_images,
+    load_selected_images_with_captions,
+    save_captured_image,
+)
 from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
@@ -296,8 +302,10 @@ def render_image_capture_tab() -> None:
             suffix = ".jpg"
             if camera_photo.type == "image/png":
                 suffix = ".png"
-            saved = save_captured_image(camera_photo.getvalue(), suffix=suffix)
-            st.success(f"Imagem salva: {saved.name}")
+            context_text = st.session_state.get("transcript_input", "") or st.session_state.get("last_voice_transcript", "")
+            auto_caption = infer_caption_from_text(context_text)
+            saved = save_captured_image(camera_photo.getvalue(), suffix=suffix, caption=auto_caption)
+            st.success(f"Imagem salva: {saved.name} ({auto_caption})")
 
     st.markdown("---")
     st.markdown("### Galeria de imagens salvas")
@@ -314,6 +322,7 @@ def render_image_capture_tab() -> None:
     for idx, img in enumerate(images):
         col = cols[idx % 4]
         col.image(str(img), use_container_width=True)
+        col.caption(get_image_caption(img))
         checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{img.name}")
         if checked:
             selected_paths.append(str(img))
@@ -379,6 +388,10 @@ def render_app() -> None:
         st.text_area("Cole aqui a transcrição do áudio (ou narração convertida):", height=220, key="transcript_input")
 
         if st.button("Gerar laudo sugerido"):
+            selected_gallery_items = load_selected_images_with_captions(st.session_state.get("selected_gallery_paths", []))
+            gallery_bytes = [b for b, _ in selected_gallery_items]
+            gallery_captions = [c for _, c in selected_gallery_items]
+            manual_captions = [f"imagem enviada {idx + 1}" for idx in range(len(uploaded_images))]
             report = ReportData(
                 paciente=paciente,
                 medico=medico,
@@ -387,7 +400,8 @@ def render_app() -> None:
                 data_exame=data_exame,
                 hora_exame=hora_exame,
                 convenio=convenio,
-                image_bytes=load_selected_images(st.session_state.get("selected_gallery_paths", [])) + uploaded_images,
+                image_bytes=gallery_bytes + uploaded_images,
+                image_captions=gallery_captions + manual_captions,
             )
             report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
             report.ensure_sections()
