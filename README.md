@@ -106,11 +106,15 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 
 ## Ordem no PDF (modelo da clínica)
 
+O PDF segue o modelo com cabeçalho em laranja, corpo em duas colunas e área no lado direito para 4 imagens do exame.
+
 O PDF segue a ordem:
 
 Indicação, Preparo do paciente, Duração do exame, Altura atingida, Reto, Cólon Sigmóide, Cólon Descendente, Ângulo Esplênico, Cólon Transverso, Ângulo Hepático, Cólon Ascendente, Ceco, Íleo Terminal, Conclusão, Observação 1 e Observação 2.
 
 Somente campos preenchidos são exibidos no documento final.
+
+Rodapé com linha separadora e endereço: Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369.
 
 ## Próximos passos
 

@@ -313,6 +313,14 @@ def render_app() -> None:
         data_exame = st.date_input("Data", value=now.date()).strftime("%d/%m/%Y")
         hora_exame = st.time_input("Hora", value=now.time().replace(second=0, microsecond=0)).strftime("%H:%M")
 
+        st.markdown("---")
+        st.markdown("**Imagens para o PDF (até 4)**")
+        uploaded_images = []
+        for idx in range(4):
+            img_file = st.file_uploader(f"Imagem {idx + 1}", type=["jpg", "jpeg", "png"], key=f"pdf_img_{idx}")
+            if img_file:
+                uploaded_images.append(img_file.getvalue())
+
     tab_gerar, tab_modelos = st.tabs(["Gerar laudo", "Gerenciar modelos"])
     with tab_modelos:
         render_template_manager(templates_data)
@@ -331,6 +339,7 @@ def render_app() -> None:
                 data_exame=data_exame,
                 hora_exame=hora_exame,
                 convenio=convenio,
+                image_bytes=uploaded_images,
             )
             report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
             report.ensure_sections()
