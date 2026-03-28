@@ -20,6 +20,11 @@ def test_load_selected_images(tmp_path: Path):
     file_path = tmp_path / "img1.jpg"
     file_path.write_bytes(b"data")
 
-    data = image_store.load_selected_images([str(file_path), str(tmp_path / "missing.jpg")])
+    data = image_store.load_selected_images_with_captions([str(file_path), str(tmp_path / "missing.jpg")])
 
-    assert data == [b"data"]
+    assert data == [(b"data", "imagem do exame")]
+
+
+def test_infer_caption_from_text():
+    caption = image_store.infer_caption_from_text("Foi realizada polipectomia em cólon descendente.")
+    assert caption == "pós-polipectomia"

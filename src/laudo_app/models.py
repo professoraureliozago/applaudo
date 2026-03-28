@@ -33,6 +33,7 @@ class ReportData:
     convenio: str = ""
     secoes: Dict[str, str] = field(default_factory=dict)
     image_bytes: List[bytes] = field(default_factory=list)
+    image_captions: List[str] = field(default_factory=list)
 
     def ensure_sections(self) -> None:
         for section in DEFAULT_SECTIONS:

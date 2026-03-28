@@ -38,20 +38,22 @@ def _has_meaningful_content(text: str) -> bool:
     return bool(text and text.strip())
 
 
-def _build_image_panel(image_bytes: list[bytes], body_style: ParagraphStyle) -> list:
+def _build_image_panel(image_bytes: list[bytes], captions: list[str], body_style: ParagraphStyle) -> list:
     panel: list = []
     image_count = min(4, len(image_bytes))
 
     for i in range(4):
         if i < image_count:
-            image = RLImage(BytesIO(image_bytes[i]), width=50 * mm, height=34 * mm)
+            image = RLImage(BytesIO(image_bytes[i]), width=50 * mm, height=40 * mm)
             image.hAlign = "CENTER"
             panel.append(image)
+            caption = captions[i] if i < len(captions) and captions[i] else f"imagem {i + 1}"
+            panel.append(Paragraph(f"<i>{caption}</i>", body_style))
         else:
             placeholder = Table(
                 [[Paragraph(f"Imagem {i + 1}", body_style)]],
                 colWidths=[50 * mm],
-                rowHeights=[34 * mm],
+                rowHeights=[40 * mm],
             )
             placeholder.setStyle(
                 TableStyle(
@@ -64,15 +66,19 @@ def _build_image_panel(image_bytes: list[bytes], body_style: ParagraphStyle) -> 
                 )
             )
             panel.append(placeholder)
+            panel.append(Paragraph("<i>sem legenda</i>", body_style))
         panel.append(Spacer(1, 2 * mm))
 
     return panel
 
 
-def _chunk_images(image_bytes: list[bytes], chunk_size: int = 4) -> list[list[bytes]]:
+def _chunk_image_items(image_bytes: list[bytes], image_captions: list[str], chunk_size: int = 4) -> list[tuple[list[bytes], list[str]]]:
     if not image_bytes:
-        return [[]]
-    return [image_bytes[i : i + chunk_size] for i in range(0, len(image_bytes), chunk_size)]
+        return [([], [])]
+    chunks: list[tuple[list[bytes], list[str]]] = []
+    for i in range(0, len(image_bytes), chunk_size):
+        chunks.append((image_bytes[i : i + chunk_size], image_captions[i : i + chunk_size]))
+    return chunks
 
 
 def generate_pdf(report: ReportData) -> bytes:
@@ -155,10 +161,10 @@ def generate_pdf(report: ReportData) -> bytes:
     if not left_column:
         left_column.append(Paragraph("Sem campos preenchidos para exibição.", body_style))
 
-    image_chunks = _chunk_images(report.image_bytes, chunk_size=4)
-    for idx, chunk in enumerate(image_chunks):
+    image_chunks = _chunk_image_items(report.image_bytes, report.image_captions, chunk_size=4)
+    for idx, (chunk_images, chunk_captions) in enumerate(image_chunks):
         current_left = left_column if idx == 0 else [Paragraph("<b>Imagens adicionais</b>", section_style)]
-        right_column = _build_image_panel(chunk, body_style)
+        right_column = _build_image_panel(chunk_images, chunk_captions, body_style)
         body_table = Table([[current_left, right_column]], colWidths=[132 * mm, 52 * mm])
         body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story.append(body_table)
