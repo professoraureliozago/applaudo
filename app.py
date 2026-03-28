@@ -13,6 +13,7 @@ import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from src.laudo_app import ReportData, TemplateEngine
+from src.laudo_app.image_store import list_captured_images, load_selected_images, save_captured_image
 from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
@@ -283,6 +284,49 @@ def render_auto_transcription() -> None:
         st.success("Exemplo carregado no rascunho.")
 
 
+def render_image_capture_tab() -> None:
+    st.subheader("Captura e seleção de imagens")
+    st.caption("Capture fotos durante o exame e marque as que devem ir para o laudo.")
+
+    camera_photo = st.camera_input("Visualização da captura (clique para tirar foto)", key="camera_live")
+    if st.button("Salvar foto capturada"):
+        if not camera_photo:
+            st.warning("Capture uma imagem antes de salvar.")
+        else:
+            suffix = ".jpg"
+            if camera_photo.type == "image/png":
+                suffix = ".png"
+            saved = save_captured_image(camera_photo.getvalue(), suffix=suffix)
+            st.success(f"Imagem salva: {saved.name}")
+
+    st.markdown("---")
+    st.markdown("### Galeria de imagens salvas")
+    images = list_captured_images()
+
+    if not images:
+        st.info("Nenhuma imagem salva ainda.")
+        return
+
+    st.caption("Marque as imagens que deseja anexar ao laudo.")
+    cols = st.columns(4)
+    selected_paths: list[str] = []
+
+    for idx, img in enumerate(images):
+        col = cols[idx % 4]
+        col.image(str(img), use_container_width=True)
+        checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{img.name}")
+        if checked:
+            selected_paths.append(str(img))
+
+    if st.button("Atualizar imagens selecionadas para o laudo"):
+        st.session_state["selected_gallery_paths"] = selected_paths
+        st.success(f"{len(selected_paths)} imagem(ns) marcadas para anexar no laudo.")
+
+    current = st.session_state.get("selected_gallery_paths", [])
+    if current:
+        st.info(f"Imagens atualmente marcadas: {len(current)}")
+
+
 def render_app() -> None:
     st.set_page_config(page_title="Laudo Colonoscopia por Áudio", layout="wide")
     st.title("Laudo de Colonoscopia (MVP)")
@@ -302,6 +346,7 @@ def render_app() -> None:
     st.session_state.setdefault("last_mic_chunk_hash", None)
     st.session_state.setdefault("last_voice_transcript", "")
     st.session_state.setdefault("last_voice_status", "")
+    st.session_state.setdefault("selected_gallery_paths", [])
 
     with st.sidebar:
         st.header("Dados do exame")
@@ -322,9 +367,11 @@ def render_app() -> None:
             if img_file:
                 uploaded_images.append(img_file.getvalue())
 
-    tab_gerar, tab_modelos = st.tabs(["Gerar laudo", "Gerenciar modelos"])
+    tab_gerar, tab_modelos, tab_imagens = st.tabs(["Gerar laudo", "Gerenciar modelos", "Imagens"])
     with tab_modelos:
         render_template_manager(templates_data)
+    with tab_imagens:
+        render_image_capture_tab()
 
     with tab_gerar:
         render_auto_transcription()
@@ -340,7 +387,7 @@ def render_app() -> None:
                 data_exame=data_exame,
                 hora_exame=hora_exame,
                 convenio=convenio,
-                image_bytes=uploaded_images,
+                image_bytes=load_selected_images(st.session_state.get("selected_gallery_paths", [])) + uploaded_images,
             )
             report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
             report.ensure_sections()

@@ -108,6 +108,14 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Layout de PDF mais próximo do modelo da clínica (título, cabeçalho clínico e seções em sequência).
 
 
+
+## Captura e seleção de imagens do exame
+
+- Abra a aba **Imagens** durante o exame.
+- Use a visualização da câmera para capturar e salvar fotos em `captured_images/`.
+- A galeria abre na mesma aba para marcar as imagens que irão para o laudo.
+- As imagens marcadas são anexadas na lateral direita do PDF, em blocos de até 4 imagens por página.
+
 ## Ordem no PDF (modelo da clínica)
 
 O PDF segue o modelo com cabeçalho em laranja, corpo em duas colunas e área no lado direito para 4 imagens do exame.
