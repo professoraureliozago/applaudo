@@ -49,6 +49,10 @@ Você pode repetir várias gravações curtas durante o exame e ir acumulando no
 
 No modo de microfone em trechos:
 
+
+> Observação importante: por segurança do navegador, o início/parada da **captura física do microfone** ainda depende da interação no componente de gravação.
+> Os comandos de voz (`gravar`/`parar`) controlam o estado de captura lógica do laudo (anexar/pausar transcrição) após o trecho ser processado.
+
 Fluxo recomendado: grave um trecho, clique em **Processar trecho do microfone agora**, e veja a **Última transcrição detectada**.
 
 - Comandos de início aceitos: **"gravar"**, **"grava"**, **"iniciar"**, **"começar"**.

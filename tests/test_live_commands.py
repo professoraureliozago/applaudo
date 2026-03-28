@@ -43,3 +43,13 @@ def test_chunk_ignored_when_inactive():
 def test_last_command_wins_when_both_present():
     res = apply_live_command("gravar ... parar", recording_active=True, current_draft="txt")
     assert res.recording_active is False
+
+
+def test_fuzzy_start_command_is_detected():
+    res = apply_live_command("gavar", recording_active=False, current_draft="")
+    assert res.recording_active is True
+
+
+def test_fuzzy_stop_command_is_detected():
+    res = apply_live_command("pausarh", recording_active=True, current_draft="txt")
+    assert res.recording_active is False

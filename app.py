@@ -200,6 +200,7 @@ def render_auto_transcription() -> None:
 
     status = "ATIVA" if st.session_state["recording_active"] else "PAUSADA"
     st.info(f"Captura por comando de voz: **{status}**. Diga 'gravar'/'iniciar' para ativar e 'parar'/'pausar' para pausar.")
+    st.caption("A captura física do microfone no navegador ainda exige clicar para gravar; os comandos de voz controlam a anexação ao laudo após transcrição do trecho.")
 
     st.caption("Fluxo recomendado: 1) grave um trecho no microfone; 2) clique em 'Processar trecho do microfone agora'; 3) veja a última transcrição e status abaixo.")
 
