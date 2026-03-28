@@ -2,42 +2,59 @@
   "sections": [
     {
       "id": "indicacao",
-      "triggers": ["indicação", "indicacao"],
+      "triggers": [
+        "indicação",
+        "indicacao"
+      ],
       "default": "",
       "models": [
         {
           "name": "rastreio",
-          "keywords": ["rastreamento", "screening", "check-up"],
+          "keywords": [
+            "rastreamento",
+            "screening",
+            "check-up"
+          ],
           "text": "Exame indicado para rastreamento de neoplasia colorretal."
         },
         {
           "name": "sangramento",
-          "keywords": ["sangramento", "hematoquezia", "sangue nas fezes"],
+          "keywords": [
+            "sangramento",
+            "hematoquezia",
+            "sangue nas fezes"
+          ],
           "text": "Exame indicado por quadro de sangramento digestivo baixo."
+        },
+        {
+          "name": "diarreia",
+          "keywords": [
+            "diarreia",
+            "diarreia cronica",
+            "di areia",
+            "de areia",
+            "di arreia",
+            "de arreia"
+          ],
+          "text": "Exame indicado para avaliação de diarreia crônica."
+        },
+        {
+          "name": "constipação",
+          "keywords": [
+            "constipação",
+            "constipação crônica"
+          ],
+          "text": "Exame indicado para avaliação de constipação crônica."
         }
       ]
     },
     {
       "id": "preparo_paciente",
-<<<<<<< HEAD
       "triggers": [
         "preparo"
       ],
       "default": "Preparo não descrito durante a narração.",
-=======
-      "triggers": ["preparo"],
-      "default": "",
->>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
-        {
-          "name": "inadequado",
-          "keywords": [
-            "preparo inadequado",
-            "resíduos fecais",
-            "limpeza ruim"
-          ],
-          "text": "Preparo inadequado, com prejuízo parcial da análise mucosa."
-        },
         {
           "name": "adequado 9",
           "keywords": [
@@ -57,88 +74,187 @@
             "Boston 8",
             "escala de Boston 8"
           ],
-          "text": "Preparo adequado com discreta quantidade de líquidos em um segmento do cólon. Escala de Boston de 08 pontos."
+          "text": "Preparo adequado com moderada quantidade de líquidos no cólon. Escala de Boston de 08 pontos."
+        },
+        {
+          "name": "adequado 7",
+          "keywords": [
+            "7",
+            "07",
+            "sete",
+            "Boston 7",
+            "escala de Boston 7"
+          ],
+          "text": "Preparo adequado com grande quantidade de resíduos líquidos no cólon. Escala de Boston de 07 pontos."
+        },
+        {
+          "name": "irregular 6",
+          "keywords": [
+            "6",
+            "06",
+            "seis",
+            "Boston 6",
+            "escala de Boston 6"
+          ],
+          "text": "Preparo irregular com presença de áreas com pequena quantidade de resíduos, pequenos fragmentos de fezes ou líquido opaco mas com mucosa bem avaliada. Escala de Boston de 06 pontos."
+        },
+        {
+          "name": "irregular 5",
+          "keywords": [
+            "5",
+            "05",
+            "cinco",
+            "Boston 5",
+            "escala de Boston 5"
+          ],
+          "text": "Preparo irregular com presença de áreas com moderada quantidade de resíduos, moderados fragmentos de fezes ou líquido opaco mas com mucosa parcialmente avaliada. Escala de Boston de 05 pontos. Sugere-se repetir exame com preparo mais adequado."
+        },
+        {
+          "name": "irregular 4",
+          "keywords": [
+            "4",
+            "04",
+            "quatro",
+            "Boston 4",
+            "escala de Boston 4"
+          ],
+          "text": "Preparo inadequado com presença de áreas com grande quantidade de resíduos, moderados fragmentos de fezes ou líquido opaco mas com mucosa parcialmente avaliada. Escala de Boston de 04 pontos. Sugere-se repetir exame com preparo mais adequado."
+        },
+        {
+          "name": "irregular 3",
+          "keywords": [
+            "3",
+            "03",
+            "três. Boston 3",
+            "escala de Boston de 3"
+          ],
+          "text": "Preparo inadequado com presença de áreas com grande quantidade de fezes ou líquido opaco não sendo possível avaliar a mucosa. Escala de Boston de 03 pontos. Sugere-se repetir exame com preparo mais adequado."
         }
       ]
     },
     {
       "id": "duracao",
-      "triggers": ["duração", "duracao", "minutos"],
+      "triggers": [
+        "duração",
+        "duracao",
+        "minutos"
+      ],
       "default": "",
       "models": [
         {
           "name": "duracao_padrao",
-          "keywords": ["aproximadamente 30 minutos", "trinta minutos", "30 minutos"],
+          "keywords": [
+            "aproximadamente 30 minutos",
+            "trinta minutos",
+            "30 minutos"
+          ],
           "text": "Duração do exame de aproximadamente 30 minutos."
+        },
+        {
+          "name": "20 minutos",
+          "keywords": [
+            "20",
+            "20 minutos",
+            "vinte",
+            "vinte minutos"
+          ],
+          "text": "Duração do exame de aproximadamente 20 minutos."
         }
       ]
     },
     {
       "id": "altura_atingida",
-      "triggers": ["altura atingida", "atingiu", "ceco"],
+      "triggers": [
+        "altura atingida",
+        "atingiu",
+        "ceco"
+      ],
       "default": "",
       "models": [
         {
           "name": "ceco",
-          "keywords": ["até o ceco", "atingiu o ceco", "introduzido até o ceco"],
+          "keywords": [
+            "até o ceco",
+            "atingiu o ceco",
+            "introduzido até o ceco",
+            "até o seco",
+            "atingiu o seco",
+            "introduzido até o seco"
+          ],
           "text": "O colonoscópio foi introduzido pelo ânus até o ceco."
+        },
+        {
+          "name": "ileo",
+          "keywords": [
+            "até o ileo",
+            "atingiu o  íleo",
+            "introduzido até o íleo"
+          ],
+          "text": "O colonoscópio foi introduzido pelo ânus até o íleo distal."
         }
       ]
     },
     {
       "id": "reto",
-<<<<<<< HEAD
       "triggers": [
         "reto"
       ],
       "default": "Reto sem descrição específica.",
-=======
-      "triggers": ["reto"],
-      "default": "",
->>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
-          "name": "normal",
+          "name": "reto normal",
           "keywords": [
-            "reto normal",
-            "mucosa normal",
-            "calibre normal"
+            "reto normal"
           ],
           "text": "O reto tem calibre e mucosa normais."
+        },
+        {
+          "name": "reto inflamação",
+          "keywords": [
+            "reto inflamação",
+            "inflamação no reto",
+            "reto inflamado"
+          ],
+          "text": "Em topografia do reto observa-se mucosa com hiperemia, ulcerações e presença de fibrina compatível com processo inflamatório."
         }
       ]
     },
     {
       "id": "colon_sigmoide",
-      "triggers": ["sigmoide", "cólon sigmoide", "colon sigmoide"],
+      "triggers": [
+        "sigmoide",
+        "cólon sigmoide",
+        "colon sigmoide"
+      ],
       "default": "",
       "models": [
         {
           "name": "normal",
-          "keywords": ["sigmoide normal", "mucosa íntegra", "luz conservada"],
+          "keywords": [
+            "sigmoide normal",
+            "mucosa íntegra",
+            "luz conservada"
+          ],
           "text": "O sigmoide tem luz conservada com paredes cobertas com mucosa íntegra."
         }
       ]
     },
     {
       "id": "colon_descendente",
-<<<<<<< HEAD
       "triggers": [
         "cólon descendente",
         "colon descendente",
         "descendente"
       ],
       "default": "Cólon descendente sem descrição específica.",
-=======
-      "triggers": ["cólon descendente", "colon descendente", "descendente"],
-      "default": "",
->>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "normal",
           "keywords": [
-            "mucosa normal",
-            "luz preservada"
+            "cólon descendente com mucosa normal",
+            "cólon descendente normal",
+            "descendente normal",
+            "esquerdo normal"
           ],
           "text": "O cólon descendente apresenta luz e mucosa normais."
         },
@@ -155,65 +271,88 @@
     },
     {
       "id": "angulo_esplenico",
-      "triggers": ["ângulo esplênico", "angulo esplenico"],
+      "triggers": [
+        "ângulo esplênico",
+        "angulo esplenico"
+      ],
       "default": "",
       "models": [
         {
           "name": "ultrapassado",
-          "keywords": ["ultrapassado sem dificuldades", "sem dificuldades no ângulo esplênico"],
+          "keywords": [
+            "ultrapassado sem dificuldades",
+            "sem dificuldades no ângulo esplênico"
+          ],
           "text": "O ângulo esplênico foi ultrapassado sem dificuldades."
         }
       ]
     },
     {
       "id": "colon_transverso",
-      "triggers": ["transverso", "cólon transverso", "colon transverso"],
+      "triggers": [
+        "transverso",
+        "cólon transverso",
+        "colon transverso"
+      ],
       "default": "",
       "models": [
         {
           "name": "normal",
-          "keywords": ["transverso normal", "haustrações normais", "mucosa normal no transverso"],
+          "keywords": [
+            "transverso normal",
+            "haustrações normais",
+            "mucosa normal no transverso"
+          ],
           "text": "O cólon transverso tem calibre, haustrações e mucosa normais."
         }
       ]
     },
     {
       "id": "angulo_hepatico",
-      "triggers": ["ângulo hepático", "angulo hepatico"],
+      "triggers": [
+        "ângulo hepático",
+        "angulo hepatico"
+      ],
       "default": "",
       "models": [
         {
           "name": "ultrapassado",
-          "keywords": ["ângulo hepático ultrapassado", "ultrapassado sem dificuldades"],
+          "keywords": [
+            "ângulo hepático ultrapassado",
+            "ultrapassado sem dificuldades"
+          ],
           "text": "O ângulo hepático foi ultrapassado sem dificuldades."
         }
       ]
     },
     {
       "id": "colon_ascendente",
-      "triggers": ["ascendente", "cólon ascendente", "colon ascendente"],
+      "triggers": [
+        "ascendente",
+        "cólon ascendente",
+        "colon ascendente"
+      ],
       "default": "",
       "models": [
         {
           "name": "normal",
-          "keywords": ["ascendente normal", "mucosa preservada", "amplo"],
+          "keywords": [
+            "ascendente normal",
+            "mucosa preservada",
+            "amplo"
+          ],
           "text": "O cólon ascendente é amplo e com mucosa preservada."
         }
       ]
     },
     {
       "id": "ceco",
-<<<<<<< HEAD
       "triggers": [
         "ceco",
         "óstio apendicular",
         "ostio apendicular"
       ],
       "default": "Ceco sem descrição específica.",
-=======
-      "triggers": ["ceco", "óstio apendicular", "ostio apendicular"],
-      "default": "",
->>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "identificado",
@@ -227,7 +366,6 @@
       ]
     },
     {
-<<<<<<< HEAD
       "id": "observacoes",
       "triggers": [
         "observação",
@@ -235,35 +373,6 @@
         "canal anal"
       ],
       "default": "Sem observações adicionais.",
-=======
-      "id": "ileo_terminal",
-      "triggers": ["íleo terminal", "ileo terminal"],
-      "default": "",
-      "models": [
-        {
-          "name": "normal",
-          "keywords": ["íleo terminal normal", "ileo terminal normal", "mucosa ileal normal"],
-          "text": "Íleo terminal com mucosa preservada, sem alterações."
-        }
-      ]
-    },
-    {
-      "id": "conclusao",
-      "triggers": ["conclusão", "conclusao"],
-      "default": "",
-      "models": [
-        {
-          "name": "normal",
-          "keywords": ["restante do exame normal", "sem alterações"],
-          "text": "Restante do exame macroscopicamente normal."
-        }
-      ]
-    },
-    {
-      "id": "observacao_1",
-      "triggers": ["observação 1", "obs 1", "observacao 1"],
-      "default": "",
->>>>>>> 405ec8c7d6cc68cea260f62bb063b4f476e53029
       "models": [
         {
           "name": "canal_anal",
@@ -277,12 +386,20 @@
     },
     {
       "id": "observacao_2",
-      "triggers": ["observação 2", "obs 2", "observacao 2"],
+      "triggers": [
+        "observação 2",
+        "obs 2",
+        "observacao 2"
+      ],
       "default": "",
       "models": [
         {
           "name": "seguimento",
-          "keywords": ["seguimento", "retorno", "controle"],
+          "keywords": [
+            "seguimento",
+            "retorno",
+            "controle"
+          ],
           "text": "Sugerido seguimento clínico conforme correlação com anatomopatológico."
         }
       ]
