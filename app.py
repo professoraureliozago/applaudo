@@ -423,6 +423,7 @@ def render_app() -> None:
     st.session_state.setdefault("last_voice_status", "")
     st.session_state.setdefault("selected_gallery_paths", [])
     st.session_state.setdefault("current_exam_id", None)
+    st.session_state.setdefault("pending_transcript_append", "")
 
     with st.sidebar:
         st.header("Exames")
@@ -565,6 +566,11 @@ def render_app() -> None:
     with tab_gerar:
         render_auto_transcription()
         st.subheader("Narração/Transcrição")
+        pending_text = st.session_state.get("pending_transcript_append", "")
+        if pending_text:
+            previous = st.session_state.get("transcript_input", "")
+            st.session_state["transcript_input"] = f"{previous} {pending_text}".strip()
+            st.session_state["pending_transcript_append"] = ""
         st.text_area("Cole aqui a transcrição do áudio (ou narração convertida):", height=220, key="transcript_input")
 
         if st.button("Gerar laudo sugerido", disabled=current_exam is None):
@@ -601,9 +607,9 @@ def render_app() -> None:
                 for section, generated in additions.items():
                     if generated.strip():
                         report.secoes[section] = generated
-                previous = st.session_state.get("transcript_input", "")
-                st.session_state["transcript_input"] = f"{previous} {text_keywords}".strip()
+                st.session_state["pending_transcript_append"] = text_keywords.strip()
                 st.success("Complemento aplicado nas seções reconhecidas.")
+                st.rerun()
             for section, text in report.secoes.items():
                 report.secoes[section] = st.text_area(section.replace("_", " ").title(), value=text, key=f"sec_{section}")
 
