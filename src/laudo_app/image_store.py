@@ -119,3 +119,11 @@ def set_image_caption(path: Path, caption: str, exam_id: int | None = None) -> N
     metadata = _load_metadata(exam_id)
     metadata[path.name] = caption.strip() or "imagem do exame"
     _save_metadata(metadata, exam_id)
+
+
+def clear_unassigned_images() -> None:
+    folder = ensure_capture_dir(None)
+    for p in folder.iterdir():
+        if p.is_file():
+            p.unlink(missing_ok=True)
+    _save_metadata({}, None)

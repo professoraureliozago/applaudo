@@ -30,6 +30,7 @@ from src.laudo_app.database import (
     update_exam,
 )
 from src.laudo_app.image_store import (
+    clear_unassigned_images,
     get_image_caption,
     infer_caption_from_text,
     list_captured_images,
@@ -84,6 +85,26 @@ def _parse_br_date(date_text: str) -> date | None:
         return datetime.strptime(raw, "%d/%m/%Y").date()
     except ValueError:
         return None
+
+
+def _apply_models_for_single_section(templates_data: dict[str, Any], section_id: str, input_text: str, current_text: str) -> str:
+    section = next((s for s in templates_data.get("sections", []) if s.get("id") == section_id), None)
+    if not section:
+        return current_text
+    text_l = (input_text or "").lower()
+    for model in section.get("models", []):
+        keywords = [k.lower() for k in model.get("keywords", [])]
+        if any(k in text_l for k in keywords):
+            model_text = (model.get("text") or "").strip()
+            if not model_text:
+                return current_text
+            if not current_text.strip():
+                return model_text
+            if current_text.strip() == model_text:
+                return current_text
+            if model_text not in current_text:
+                return f"{current_text.strip()}\n{model_text}"
+    return current_text
 
 
 def render_template_manager(templates_data: dict[str, Any]) -> None:
@@ -388,6 +409,7 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
     st.caption("Marque as imagens que deseja anexar ao laudo.")
     cols = st.columns(4)
+    prev_selected = set(st.session_state.get("selected_gallery_paths", []))
     selected_paths: list[str] = []
 
     for idx, img in enumerate(images):
@@ -397,7 +419,7 @@ def render_image_capture_tab(exam_id: int | None) -> None:
         new_caption = col.text_input("Legenda", value=current_caption, key=f"cap_{exam_id}_{img.name}")
         if new_caption != current_caption:
             set_image_caption(img, new_caption, exam_id=exam_id)
-        checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{exam_id}_{img.name}")
+        checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{exam_id}_{img.name}", value=str(img) in prev_selected)
         if checked:
             selected_paths.append(str(img))
 
@@ -473,6 +495,7 @@ def render_app() -> None:
             st.session_state["draft_exam_date"] = date.today()
             st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
             st.session_state["draft_birth_date_text"] = ""
+            clear_unassigned_images()
 
         if flow == "Novo exame":
             st.markdown("### Cadastro do paciente e exame")
@@ -602,6 +625,12 @@ def render_app() -> None:
             accept_multiple_files=True,
             key="pdf_imgs_multi",
         )
+        selected_preview = st.session_state.get("selected_gallery_paths", [])
+        if selected_preview:
+            st.markdown("**Miniaturas selecionadas para o laudo**")
+            for path in selected_preview:
+                st.image(path, use_container_width=True)
+                st.caption(get_image_caption(Path(path), exam_id=st.session_state.get("current_exam_id")))
 
     current_exam = get_exam(st.session_state["current_exam_id"]) if st.session_state.get("current_exam_id") else None
     if current_exam:
@@ -692,26 +721,18 @@ def render_app() -> None:
         report: ReportData | None = st.session_state.get("report")
         if report:
             st.subheader("Revisão por seção")
-            st.caption("Você pode continuar sugerindo preenchimento por palavras-chave digitadas abaixo.")
-            text_keywords = st.text_input("Complemento por palavras-chave (texto livre)")
-            if st.button("Aplicar palavras-chave digitadas"):
-                additions = engine.render_from_transcript(text_keywords)
-                for section, generated in additions.items():
-                    generated_text = generated.strip()
-                    if not generated_text:
-                        continue
-                    current_text = report.secoes.get(section, "").strip()
-                    if not current_text:
-                        report.secoes[section] = generated_text
-                    elif current_text == generated_text:
-                        report.secoes[section] = current_text
-                    elif generated_text not in current_text:
-                        report.secoes[section] = f"{current_text}\n{generated_text}".strip()
-                st.session_state["pending_transcript_append"] = text_keywords.strip()
-                st.success("Complemento aplicado nas seções reconhecidas.")
-                st.rerun()
             for section, text in report.secoes.items():
                 report.secoes[section] = st.text_area(section.replace("_", " ").title(), value=text, key=f"sec_{section}")
+                if st.button("Revisar texto", key=f"review_{section}"):
+                    reviewed = _apply_models_for_single_section(
+                        templates_data=templates_data,
+                        section_id=section,
+                        input_text=report.secoes[section],
+                        current_text=report.secoes[section],
+                    )
+                    report.secoes[section] = reviewed
+                    st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
+                    st.rerun()
 
             pdf_data = generate_pdf(report)
             st.download_button(
