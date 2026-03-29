@@ -120,6 +120,15 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - A aba mostra quantas imagens estão selecionadas e a estimativa de páginas de imagens no PDF.
 - Cada imagem recebe legenda automática (ex.: ceco, pós-polipectomia) exibida abaixo da foto no PDF.
 
+## Cadastro confiável de paciente e exame (SQLite)
+
+- O app agora cria e usa um banco SQLite local em `data/laudo_app.db`.
+- Fluxo inicial com dois caminhos: **Novo exame** e **Abrir exame existente**.
+- Não é permitido criar paciente duplicado com a mesma combinação **nome + data de nascimento** (normalização por nome).
+- Em **Novo exame**, a idade é calculada automaticamente pela data de nascimento.
+- Em **Abrir exame existente**, é possível buscar por nome do paciente, abrir, editar e excluir exame (com confirmação de 2 cliques).
+- Imagens e filmagens ficam vinculadas ao exame ativo.
+
 ## Ordem no PDF (modelo da clínica)
 
 O PDF segue o modelo com cabeçalho em laranja, corpo em duas colunas e área no lado direito para blocos de 4 imagens por página, sem limite fixo total.
