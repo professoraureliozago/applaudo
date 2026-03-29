@@ -36,6 +36,7 @@ from src.laudo_app.image_store import (
     load_selected_images_with_captions,
     reassign_images_to_exam,
     save_captured_image,
+    set_image_caption,
 )
 from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
@@ -392,7 +393,10 @@ def render_image_capture_tab(exam_id: int | None) -> None:
     for idx, img in enumerate(images):
         col = cols[idx % 4]
         col.image(str(img), use_container_width=True)
-        col.caption(get_image_caption(img, exam_id=exam_id))
+        current_caption = get_image_caption(img, exam_id=exam_id)
+        new_caption = col.text_input("Legenda", value=current_caption, key=f"cap_{exam_id}_{img.name}")
+        if new_caption != current_caption:
+            set_image_caption(img, new_caption, exam_id=exam_id)
         checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{exam_id}_{img.name}")
         if checked:
             selected_paths.append(str(img))
@@ -426,7 +430,7 @@ def render_app() -> None:
     engine = TemplateEngine(config=templates_data)
 
     st.session_state.setdefault("transcript_input", "")
-    st.session_state.setdefault("recording_active", False)
+    st.session_state.setdefault("recording_active", True)
     st.session_state.setdefault("last_mic_chunk_hash", None)
     st.session_state.setdefault("last_voice_transcript", "")
     st.session_state.setdefault("last_voice_status", "")
@@ -441,13 +445,21 @@ def render_app() -> None:
     st.session_state.setdefault("draft_exam_date", date.today())
     st.session_state.setdefault("draft_exam_time", datetime.now().time().replace(second=0, microsecond=0))
     st.session_state.setdefault("draft_birth_date_text", "")
-    st.session_state.setdefault("last_flow", "")
+    st.session_state.setdefault("flow_mode", "Novo exame")
     st.session_state.setdefault("pending_transcript_append", "")
 
     with st.sidebar:
         st.header("Exames")
-        flow = st.radio("Fluxo", ["Novo exame", "Abrir exame existente"], horizontal=True)
-        if flow == "Novo exame" and st.session_state.get("last_flow") != "Novo exame":
+        b_new, b_open = st.columns(2)
+        new_clicked = b_new.button("Novo exame", use_container_width=True)
+        open_clicked = b_open.button("Abrir exame existente", use_container_width=True)
+        if new_clicked:
+            st.session_state["flow_mode"] = "Novo exame"
+        if open_clicked:
+            st.session_state["flow_mode"] = "Abrir exame existente"
+        flow = st.session_state.get("flow_mode", "Novo exame")
+
+        if new_clicked:
             st.session_state["current_patient_id"] = None
             st.session_state["current_patient_name"] = ""
             st.session_state["current_patient_birth_date"] = ""
@@ -461,7 +473,6 @@ def render_app() -> None:
             st.session_state["draft_exam_date"] = date.today()
             st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
             st.session_state["draft_birth_date_text"] = ""
-        st.session_state["last_flow"] = flow
 
         if flow == "Novo exame":
             st.markdown("### Cadastro do paciente e exame")
@@ -482,20 +493,6 @@ def render_app() -> None:
             data_exame_dt = st.date_input("Data do Exame", value=st.session_state.get("draft_exam_date", now.date()), format="DD/MM/YYYY")
             hora_exame_dt = st.time_input("Hora do exame", value=st.session_state.get("draft_exam_time", now.time().replace(second=0, microsecond=0)))
 
-            duplicate = None
-            if patient_name.strip() and nascimento:
-                candidates = search_patients_by_name(patient_name.strip())
-                duplicate = next(
-                    (p for p in candidates if p.normalized_name == " ".join(patient_name.strip().lower().split()) and p.birth_date == _to_iso_date(nascimento)),
-                    None,
-                )
-            if duplicate:
-                st.warning("Paciente já cadastrado com este nome e data de nascimento.")
-                if st.checkbox("Completar com dados existentes", key="use_existing_patient"):
-                    sexo = duplicate.sexo or sexo
-                    convenio = duplicate.convenio or convenio
-                    st.info(f"Dados reaproveitados para {duplicate.name}.")
-
             if st.button("Salvar dados do paciente"):
                 if not patient_name.strip():
                     st.error("Nome do paciente é obrigatório.")
@@ -504,6 +501,14 @@ def render_app() -> None:
                 elif nascimento > date.today():
                     st.error("Data de nascimento não pode ser futura.")
                 else:
+                    duplicate = None
+                    candidates = search_patients_by_name(patient_name.strip())
+                    duplicate = next(
+                        (p for p in candidates if p.normalized_name == " ".join(patient_name.strip().lower().split()) and p.birth_date == _to_iso_date(nascimento)),
+                        None,
+                    )
+                    if duplicate:
+                        st.info("Paciente já cadastrado: usando cadastro existente para novo exame.")
                     patient, _ = create_or_get_patient(
                         name=patient_name.strip(),
                         sexo=sexo,
@@ -684,29 +689,6 @@ def render_app() -> None:
             report.ensure_sections()
             st.session_state["report"] = report
 
-        if st.button("Salvar exame", disabled=not bool(st.session_state.get("current_patient_id"))):
-            report_to_save: ReportData | None = st.session_state.get("report")
-            if not report_to_save:
-                st.error("Gere o laudo sugerido antes de salvar o exame.")
-            else:
-                exam = create_exam(
-                    patient_id=int(st.session_state["current_patient_id"]),
-                    doctor_name=st.session_state.get("draft_doctor_name", report_to_save.medico or "Dr(a)."),
-                    exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
-                    exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
-                )
-                moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam.id)
-                for image_path in moved_images:
-                    add_exam_image(exam.id, str(image_path), get_image_caption(image_path, exam_id=exam.id))
-                save_exam_report(
-                    exam_id=exam.id,
-                    transcript=st.session_state.get("transcript_input", ""),
-                    sections=report_to_save.secoes,
-                )
-                st.session_state["current_exam_id"] = exam.id
-                st.session_state["selected_gallery_paths"] = [str(p) for p in moved_images]
-                st.success(f"Exame #{exam.id} salvo com sucesso para o paciente {report_to_save.paciente}.")
-
         report: ReportData | None = st.session_state.get("report")
         if report:
             st.subheader("Revisão por seção")
@@ -715,8 +697,16 @@ def render_app() -> None:
             if st.button("Aplicar palavras-chave digitadas"):
                 additions = engine.render_from_transcript(text_keywords)
                 for section, generated in additions.items():
-                    if generated.strip():
-                        report.secoes[section] = generated
+                    generated_text = generated.strip()
+                    if not generated_text:
+                        continue
+                    current_text = report.secoes.get(section, "").strip()
+                    if not current_text:
+                        report.secoes[section] = generated_text
+                    elif current_text == generated_text:
+                        report.secoes[section] = current_text
+                    elif generated_text not in current_text:
+                        report.secoes[section] = f"{current_text}\n{generated_text}".strip()
                 st.session_state["pending_transcript_append"] = text_keywords.strip()
                 st.success("Complemento aplicado nas seções reconhecidas.")
                 st.rerun()
@@ -730,6 +720,24 @@ def render_app() -> None:
                 file_name=f"laudo_colonoscopia_{report.paciente or 'paciente'}.pdf",
                 mime="application/pdf",
             )
+            if st.button("Salvar exame", disabled=not bool(st.session_state.get("current_patient_id"))):
+                exam = create_exam(
+                    patient_id=int(st.session_state["current_patient_id"]),
+                    doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
+                    exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
+                    exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                )
+                moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam.id)
+                for image_path in moved_images:
+                    add_exam_image(exam.id, str(image_path), get_image_caption(image_path, exam_id=exam.id))
+                save_exam_report(
+                    exam_id=exam.id,
+                    transcript=st.session_state.get("transcript_input", ""),
+                    sections=report.secoes,
+                )
+                st.session_state["current_exam_id"] = exam.id
+                st.session_state["selected_gallery_paths"] = [str(p) for p in moved_images]
+                st.success(f"Exame #{exam.id} salvo com sucesso para o paciente {report.paciente}.")
 
 
 if __name__ == "__main__":

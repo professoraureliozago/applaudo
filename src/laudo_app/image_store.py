@@ -113,3 +113,9 @@ def reassign_images_to_exam(paths: list[str], exam_id: int) -> list[Path]:
     _save_metadata(src_metadata, None)
     _save_metadata(dst_metadata, exam_id)
     return moved
+
+
+def set_image_caption(path: Path, caption: str, exam_id: int | None = None) -> None:
+    metadata = _load_metadata(exam_id)
+    metadata[path.name] = caption.strip() or "imagem do exame"
+    _save_metadata(metadata, exam_id)
