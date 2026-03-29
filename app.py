@@ -75,6 +75,16 @@ def _to_br_date(iso_date: str) -> str:
     return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%d/%m/%Y")
 
 
+def _parse_br_date(date_text: str) -> date | None:
+    raw = (date_text or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%d/%m/%Y").date()
+    except ValueError:
+        return None
+
+
 def render_template_manager(templates_data: dict[str, Any]) -> None:
     st.subheader("Modelos (templates) por campo")
     sections = templates_data.get("sections", [])
@@ -430,19 +440,42 @@ def render_app() -> None:
     st.session_state.setdefault("draft_doctor_name", "Dr(a).")
     st.session_state.setdefault("draft_exam_date", date.today())
     st.session_state.setdefault("draft_exam_time", datetime.now().time().replace(second=0, microsecond=0))
+    st.session_state.setdefault("draft_birth_date_text", "")
+    st.session_state.setdefault("last_flow", "")
     st.session_state.setdefault("pending_transcript_append", "")
 
     with st.sidebar:
         st.header("Exames")
         flow = st.radio("Fluxo", ["Novo exame", "Abrir exame existente"], horizontal=True)
+        if flow == "Novo exame" and st.session_state.get("last_flow") != "Novo exame":
+            st.session_state["current_patient_id"] = None
+            st.session_state["current_patient_name"] = ""
+            st.session_state["current_patient_birth_date"] = ""
+            st.session_state["current_patient_sexo"] = ""
+            st.session_state["current_patient_convenio"] = ""
+            st.session_state["current_exam_id"] = None
+            st.session_state["selected_gallery_paths"] = []
+            st.session_state["report"] = None
+            st.session_state["transcript_input"] = ""
+            st.session_state["draft_doctor_name"] = "Dr(a)."
+            st.session_state["draft_exam_date"] = date.today()
+            st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
+            st.session_state["draft_birth_date_text"] = ""
+        st.session_state["last_flow"] = flow
 
         if flow == "Novo exame":
             st.markdown("### Cadastro do paciente e exame")
             patient_name = st.text_input("Nome do Paciente")
             sexo = st.selectbox("Sexo", ["", "Feminino", "Masculino"])
-            nascimento = st.date_input("Data de Nascimento", value=date(1980, 1, 1), format="DD/MM/YYYY")
-            idade_calc = calculate_age(_to_iso_date(nascimento))
-            st.text_input("Idade (automática)", value=str(max(idade_calc, 0)), disabled=True)
+            birth_text = st.text_input(
+                "Data de Nascimento (DD/MM/AAAA)",
+                value=st.session_state.get("draft_birth_date_text", ""),
+                placeholder="DD/MM/AAAA",
+            )
+            st.session_state["draft_birth_date_text"] = birth_text
+            nascimento = _parse_br_date(birth_text)
+            idade_calc = calculate_age(_to_iso_date(nascimento)) if nascimento else 0
+            st.text_input("Idade (automática)", value=str(max(idade_calc, 0)) if nascimento else "", disabled=True)
             medico = st.text_input("Nome do Médico Solicitante", value=st.session_state.get("draft_doctor_name", "Dr(a)."))
             convenio = st.text_input("Convênio")
             now = datetime.now()
@@ -450,7 +483,7 @@ def render_app() -> None:
             hora_exame_dt = st.time_input("Hora do exame", value=st.session_state.get("draft_exam_time", now.time().replace(second=0, microsecond=0)))
 
             duplicate = None
-            if patient_name.strip():
+            if patient_name.strip() and nascimento:
                 candidates = search_patients_by_name(patient_name.strip())
                 duplicate = next(
                     (p for p in candidates if p.normalized_name == " ".join(patient_name.strip().lower().split()) and p.birth_date == _to_iso_date(nascimento)),
@@ -466,6 +499,10 @@ def render_app() -> None:
             if st.button("Salvar dados do paciente"):
                 if not patient_name.strip():
                     st.error("Nome do paciente é obrigatório.")
+                elif not nascimento:
+                    st.error("Informe a data de nascimento no formato DD/MM/AAAA.")
+                elif nascimento > date.today():
+                    st.error("Data de nascimento não pode ser futura.")
                 else:
                     patient, _ = create_or_get_patient(
                         name=patient_name.strip(),
