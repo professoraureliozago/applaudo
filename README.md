@@ -124,6 +124,7 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 
 - O app agora cria e usa um banco SQLite local em `data/laudo_app.db`.
 - Fluxo inicial com dois caminhos: **Novo exame** e **Abrir exame existente**.
+- Em **Novo exame**, primeiro salva-se o cadastro do paciente; o exame/laudo é persistido ao clicar em **Salvar exame** na aba de geração.
 - Não é permitido criar paciente duplicado com a mesma combinação **nome + data de nascimento** (normalização por nome).
 - Em **Novo exame**, a idade é calculada automaticamente pela data de nascimento.
 - Em **Abrir exame existente**, é possível buscar por nome do paciente, abrir, editar e excluir exame (com confirmação de 2 cliques).

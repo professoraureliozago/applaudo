@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -78,6 +79,15 @@ def ensure_db() -> None:
                 exam_id INTEGER NOT NULL,
                 file_path TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS exam_reports (
+                exam_id INTEGER PRIMARY KEY,
+                transcript TEXT DEFAULT '',
+                sections_json TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
                 FOREIGN KEY(exam_id) REFERENCES exams(id) ON DELETE CASCADE
             );
             """
@@ -230,3 +240,33 @@ def add_exam_video(exam_id: int, file_path: str) -> None:
             "INSERT INTO exam_videos(exam_id, file_path, created_at) VALUES (?, ?, ?)",
             (exam_id, file_path, _now_iso()),
         )
+
+
+def save_exam_report(exam_id: int, transcript: str, sections: dict[str, str]) -> None:
+    now = _now_iso()
+    sections_json = json.dumps(sections, ensure_ascii=False)
+    with _connect() as conn:
+        exists = conn.execute("SELECT 1 FROM exam_reports WHERE exam_id = ?", (exam_id,)).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE exam_reports SET transcript=?, sections_json=?, updated_at=? WHERE exam_id=?",
+                (transcript, sections_json, now, exam_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO exam_reports(exam_id, transcript, sections_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (exam_id, transcript, sections_json, now, now),
+            )
+
+
+def get_exam_report(exam_id: int) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM exam_reports WHERE exam_id = ?", (exam_id,)).fetchone()
+    if not row:
+        return None
+    data = dict(row)
+    try:
+        data["sections"] = json.loads(data.get("sections_json") or "{}")
+    except json.JSONDecodeError:
+        data["sections"] = {}
+    return data

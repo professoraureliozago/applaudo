@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+import shutil
 
 CAPTURE_DIR = Path("captured_images")
 
@@ -88,3 +89,27 @@ def load_selected_images_with_captions(paths: list[str], exam_id: int | None = N
         if path.exists() and path.is_file():
             data.append((path.read_bytes(), get_image_caption(path, exam_id=exam_id)))
     return data
+
+
+def reassign_images_to_exam(paths: list[str], exam_id: int) -> list[Path]:
+    destination = ensure_capture_dir(exam_id)
+    src_metadata = _load_metadata(None)
+    dst_metadata = _load_metadata(exam_id)
+    moved: list[Path] = []
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists() or not path.is_file():
+            continue
+        new_path = destination / path.name
+        if new_path.exists():
+            stem = new_path.stem
+            suffix = new_path.suffix
+            new_path = destination / f"{stem}_{datetime.now().strftime('%H%M%S%f')}{suffix}"
+        shutil.move(str(path), str(new_path))
+        caption = src_metadata.pop(path.name, "imagem do exame")
+        dst_metadata[new_path.name] = caption
+        moved.append(new_path)
+
+    _save_metadata(src_metadata, None)
+    _save_metadata(dst_metadata, exam_id)
+    return moved
