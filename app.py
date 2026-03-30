@@ -46,6 +46,8 @@ from src.laudo_app.transcriber import transcribe_audio_bytes
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
+TEMPLATES_BACKUP_PATH = Path("templates/colonoscopia_templates.backup.json")
+TEMPLATES_DEFAULT_PATH = Path("templates/colonoscopia_templates.default.json")
 
 
 def ensure_streamlit_context() -> None:
@@ -61,10 +63,33 @@ def ensure_streamlit_context() -> None:
 
 
 def load_templates() -> dict[str, Any]:
-    return load_template_config(str(TEMPLATES_PATH))
+    def _is_valid(data: dict[str, Any]) -> bool:
+        return bool(data.get("sections"))
+
+    primary = load_template_config(str(TEMPLATES_PATH))
+    if _is_valid(primary):
+        return primary
+
+    if TEMPLATES_BACKUP_PATH.exists():
+        backup = load_template_config(str(TEMPLATES_BACKUP_PATH))
+        if _is_valid(backup):
+            TEMPLATES_PATH.write_text(TEMPLATES_BACKUP_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+            return backup
+
+    if TEMPLATES_DEFAULT_PATH.exists():
+        default = load_template_config(str(TEMPLATES_DEFAULT_PATH))
+        if _is_valid(default):
+            TEMPLATES_PATH.write_text(TEMPLATES_DEFAULT_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+            return default
+
+    return primary
 
 
 def save_templates(data: dict[str, Any]) -> None:
+    if not data.get("sections"):
+        raise RuntimeError("Bloqueado: tentativa de salvar templates sem seções (evita apagar modelos).")
+    if TEMPLATES_PATH.exists():
+        TEMPLATES_BACKUP_PATH.write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     with TEMPLATES_PATH.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
