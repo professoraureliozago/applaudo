@@ -112,23 +112,22 @@ def _parse_br_date(date_text: str) -> date | None:
         return None
 
 
-def _apply_models_for_single_section(templates_data: dict[str, Any], section_id: str, input_text: str, current_text: str) -> str:
-    section = next((s for s in templates_data.get("sections", []) if s.get("id") == section_id), None)
+def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, input_text: str, current_text: str) -> str:
+    section = next((s for s in engine.config.get("sections", []) if s.get("id") == section_id), None)
     if not section:
         return current_text
-    text_l = (input_text or "").lower()
-    for model in section.get("models", []):
-        keywords = [k.lower() for k in model.get("keywords", [])]
-        if any(k in text_l for k in keywords):
-            model_text = (model.get("text") or "").strip()
-            if not model_text:
-                return current_text
-            if not current_text.strip():
-                return model_text
-            if current_text.strip() == model_text:
-                return current_text
-            if model_text not in current_text:
-                return f"{current_text.strip()}\n{model_text}"
+    normalized = engine._normalize_text(input_text or "")
+    best = engine._match_section(section, normalized)
+    if best:
+        model_text = engine._apply_placeholders(best.text, input_text or "").strip()
+        if not model_text:
+            return current_text
+        if not current_text.strip():
+            return model_text
+        if current_text.strip() == model_text:
+            return current_text
+        if model_text not in current_text:
+            return f"{current_text.strip()}\n{model_text}"
     return current_text
 
 
@@ -749,14 +748,18 @@ def render_app() -> None:
             for section, text in report.secoes.items():
                 report.secoes[section] = st.text_area(section.replace("_", " ").title(), value=text, key=f"sec_{section}")
                 if st.button("Revisar texto", key=f"review_{section}"):
+                    before_text = report.secoes[section]
                     reviewed = _apply_models_for_single_section(
-                        templates_data=templates_data,
+                        engine=engine,
                         section_id=section,
                         input_text=report.secoes[section],
                         current_text=report.secoes[section],
                     )
                     report.secoes[section] = reviewed
-                    st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
+                    if reviewed != before_text:
+                        st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
+                    else:
+                        st.warning("Nenhum modelo aplicável encontrado para o texto informado nesta seção.")
                     st.rerun()
 
             pdf_data = generate_pdf(report)
