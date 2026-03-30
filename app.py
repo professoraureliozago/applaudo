@@ -710,7 +710,7 @@ def render_app() -> None:
             st.session_state["pending_transcript_append"] = ""
         st.text_area("Cole aqui a transcrição do áudio (ou narração convertida):", height=220, key="transcript_input")
 
-        can_generate = bool(current_exam or st.session_state.get("current_patient_id"))
+        can_generate = bool(st.session_state.get("transcript_input", "").strip())
         if st.button("Gerar laudo sugerido", disabled=not can_generate):
             selected_gallery_items = load_selected_images_with_captions(
                 st.session_state.get("selected_gallery_paths", []),
