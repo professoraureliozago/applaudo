@@ -143,12 +143,7 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
         model_text = engine._apply_placeholders(best.text, input_text or "").strip()
         if not model_text:
             return current_text
-        if not current_text.strip():
-            return model_text
-        if current_text.strip() == model_text:
-            return current_text
-        if model_text not in current_text:
-            return f"{current_text.strip()}\n{model_text}"
+        return model_text
     return current_text
 
 
@@ -777,6 +772,7 @@ def render_app() -> None:
                         current_text=report.secoes[section],
                     )
                     report.secoes[section] = reviewed
+                    st.session_state[f"sec_{section}"] = reviewed
                     if reviewed != before_text:
                         st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
                     else:
