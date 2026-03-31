@@ -126,11 +126,14 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Fluxo inicial com dois caminhos: **Novo exame** e **Abrir exame existente**.
 - O acionamento dos fluxos é por dois botões dedicados (um para cada função).
 - Em **Novo exame**, primeiro salva-se o cadastro do paciente; o exame/laudo é persistido ao clicar em **Salvar exame** na aba de geração.
+- Data de nascimento aceita digitação contínua de números e formata automaticamente para `DD/MM/AAAA`.
+- Médico solicitante e convênio possuem sugestões com auto preenchimento por histórico já salvo.
 - Na revisão por seção, cada campo tem botão **Revisar texto** para aplicar somente modelos daquele campo.
 - O arquivo de templates principal é protegido com backup automático (`colonoscopia_templates.backup.json`) para evitar perda acidental de modelos.
 - Não é permitido criar paciente duplicado com a mesma combinação **nome + data de nascimento** (normalização por nome).
 - Em **Novo exame**, a idade é calculada automaticamente pela data de nascimento.
 - Em **Abrir exame existente**, é possível buscar por nome do paciente, abrir, editar e excluir exame (com confirmação de 2 cliques).
+- A busca de paciente ignora acentos para facilitar correspondência parcial por nome.
 - Imagens e filmagens ficam vinculadas ao exame ativo.
 
 ## Ordem no PDF (modelo da clínica)

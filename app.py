@@ -24,6 +24,8 @@ from src.laudo_app.database import (
     ensure_db,
     get_exam,
     get_exam_report,
+    list_convenios,
+    list_doctor_names,
     list_exams,
     save_exam_report,
     search_patients_by_name,
@@ -110,6 +112,17 @@ def _parse_br_date(date_text: str) -> date | None:
         return datetime.strptime(raw, "%d/%m/%Y").date()
     except ValueError:
         return None
+
+
+def _auto_format_birth_input() -> None:
+    raw = "".join(ch for ch in st.session_state.get("birth_input", "") if ch.isdigit())[:8]
+    if len(raw) <= 2:
+        formatted = raw
+    elif len(raw) <= 4:
+        formatted = f"{raw[:2]}/{raw[2:]}"
+    else:
+        formatted = f"{raw[:2]}/{raw[2:4]}/{raw[4:]}"
+    st.session_state["birth_input"] = formatted
 
 
 def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, input_text: str, current_text: str) -> str:
@@ -507,6 +520,7 @@ def render_app() -> None:
     st.session_state.setdefault("draft_exam_date", date.today())
     st.session_state.setdefault("draft_exam_time", datetime.now().time().replace(second=0, microsecond=0))
     st.session_state.setdefault("draft_birth_date_text", "")
+    st.session_state.setdefault("birth_input", "")
     st.session_state.setdefault("flow_mode", "Novo exame")
     st.session_state.setdefault("pending_transcript_append", "")
     st.session_state.setdefault("pending_section_updates", {})
@@ -536,23 +550,44 @@ def render_app() -> None:
             st.session_state["draft_exam_date"] = date.today()
             st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
             st.session_state["draft_birth_date_text"] = ""
+            st.session_state["birth_input"] = ""
             clear_unassigned_images()
 
         if flow == "Novo exame":
             st.markdown("### Cadastro do paciente e exame")
             patient_name = st.text_input("Nome do Paciente")
             sexo = st.selectbox("Sexo", ["", "Feminino", "Masculino"])
+            st.session_state["birth_input"] = st.session_state.get("draft_birth_date_text", st.session_state.get("birth_input", ""))
             birth_text = st.text_input(
                 "Data de Nascimento (DD/MM/AAAA)",
-                value=st.session_state.get("draft_birth_date_text", ""),
+                key="birth_input",
                 placeholder="DD/MM/AAAA",
+                max_chars=10,
+                on_change=_auto_format_birth_input,
             )
             st.session_state["draft_birth_date_text"] = birth_text
             nascimento = _parse_br_date(birth_text)
             idade_calc = calculate_age(_to_iso_date(nascimento)) if nascimento else 0
             st.text_input("Idade (automática)", value=str(max(idade_calc, 0)) if nascimento else "", disabled=True)
-            medico = st.text_input("Nome do Médico Solicitante", value=st.session_state.get("draft_doctor_name", "Dr(a)."))
-            convenio = st.text_input("Convênio")
+            doctor_options = ["Dr(a)."] + [d for d in list_doctor_names() if d != "Dr(a)."]
+            doctor_default = st.session_state.get("draft_doctor_name", "Dr(a).")
+            if doctor_default not in doctor_options:
+                doctor_options.append(doctor_default)
+            medico = st.selectbox(
+                "Nome do Médico Solicitante (com sugestões)",
+                options=doctor_options,
+                index=doctor_options.index(doctor_default),
+            )
+
+            convenio_options = [""] + list_convenios()
+            convenio_default = st.session_state.get("current_patient_convenio", "")
+            if convenio_default and convenio_default not in convenio_options:
+                convenio_options.append(convenio_default)
+            convenio = st.selectbox(
+                "Convênio (com sugestões)",
+                options=convenio_options,
+                index=convenio_options.index(convenio_default) if convenio_default in convenio_options else 0,
+            )
             now = datetime.now()
             data_exame_dt = st.date_input("Data do Exame", value=st.session_state.get("draft_exam_date", now.date()), format="DD/MM/YYYY")
             hora_exame_dt = st.time_input("Hora do exame", value=st.session_state.get("draft_exam_time", now.time().replace(second=0, microsecond=0)))

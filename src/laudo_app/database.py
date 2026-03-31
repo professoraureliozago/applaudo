@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import json
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -34,7 +35,9 @@ class Exam:
 
 
 def _normalize_name(name: str) -> str:
-    return " ".join(name.strip().lower().split())
+    lowered = " ".join(name.strip().lower().split())
+    no_accents = "".join(ch for ch in unicodedata.normalize("NFD", lowered) if unicodedata.category(ch) != "Mn")
+    return no_accents
 
 
 def ensure_db() -> None:
@@ -240,6 +243,22 @@ def add_exam_video(exam_id: int, file_path: str) -> None:
             "INSERT INTO exam_videos(exam_id, file_path, created_at) VALUES (?, ?, ?)",
             (exam_id, file_path, _now_iso()),
         )
+
+
+def list_doctor_names() -> list[str]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT doctor_name FROM exams WHERE doctor_name IS NOT NULL AND TRIM(doctor_name) <> '' ORDER BY doctor_name"
+        ).fetchall()
+    return [r["doctor_name"] for r in rows]
+
+
+def list_convenios() -> list[str]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT convenio FROM patients WHERE convenio IS NOT NULL AND TRIM(convenio) <> '' ORDER BY convenio"
+        ).fetchall()
+    return [r["convenio"] for r in rows]
 
 
 def save_exam_report(exam_id: int, transcript: str, sections: dict[str, str]) -> None:
