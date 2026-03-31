@@ -118,6 +118,27 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
         return current_text
     normalized = engine._normalize_text(input_text or "")
     best = engine._match_section(section, normalized)
+    if not best:
+        # fallback para revisão manual: aceita correspondência por token de keyword
+        input_tokens = {tok for tok in normalized.split() if tok}
+        fallback_model = None
+        fallback_score = 0
+        for model in section.get("models", []):
+            score = 0
+            for kw in model.get("keywords", []):
+                kw_tokens = [t for t in engine._normalize_text(kw).split() if t]
+                # match parcial: ao menos um token significativo em comum
+                if any(tok in input_tokens for tok in kw_tokens if len(tok) >= 4):
+                    score += 1
+            if score > fallback_score:
+                fallback_score = score
+                fallback_model = model
+        if fallback_model and fallback_score > 0:
+            model_text = (fallback_model.get("text") or "").strip()
+            if model_text:
+                class _Best:
+                    text = model_text
+                best = _Best()
     if best:
         model_text = engine._apply_placeholders(best.text, input_text or "").strip()
         if not model_text:
