@@ -509,6 +509,7 @@ def render_app() -> None:
     st.session_state.setdefault("draft_birth_date_text", "")
     st.session_state.setdefault("flow_mode", "Novo exame")
     st.session_state.setdefault("pending_transcript_append", "")
+    st.session_state.setdefault("pending_section_updates", {})
 
     with st.sidebar:
         st.header("Exames")
@@ -761,6 +762,12 @@ def render_app() -> None:
         report: ReportData | None = st.session_state.get("report")
         if report:
             st.subheader("Revisão por seção")
+            pending_updates = st.session_state.get("pending_section_updates", {})
+            if pending_updates:
+                for section, reviewed in pending_updates.items():
+                    report.secoes[section] = reviewed
+                    st.session_state[f"sec_{section}"] = reviewed
+                st.session_state["pending_section_updates"] = {}
             for section, text in report.secoes.items():
                 report.secoes[section] = st.text_area(section.replace("_", " ").title(), value=text, key=f"sec_{section}")
                 if st.button("Revisar texto", key=f"review_{section}"):
@@ -772,7 +779,7 @@ def render_app() -> None:
                         current_text=report.secoes[section],
                     )
                     report.secoes[section] = reviewed
-                    st.session_state[f"sec_{section}"] = reviewed
+                    st.session_state["pending_section_updates"] = {section: reviewed}
                     if reviewed != before_text:
                         st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
                     else:
