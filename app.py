@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import date, datetime
@@ -130,6 +131,33 @@ def _auto_format_birth_input() -> None:
     else:
         formatted = f"{raw[:2]}/{raw[2:4]}/{raw[4:]}"
     st.session_state["birth_input"] = formatted
+
+
+def _try_convert_video_to_mp4(input_path: Path) -> Path:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return input_path
+    output_path = input_path.with_suffix(".mp4")
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-i",
+        str(input_path),
+        "-vcodec",
+        "libx264",
+        "-crf",
+        "28",
+        "-preset",
+        "veryfast",
+        "-acodec",
+        "aac",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 or not output_path.exists():
+        return input_path
+    input_path.unlink(missing_ok=True)
+    return output_path
 
 
 def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, input_text: str, current_text: str) -> str:
@@ -455,6 +483,7 @@ def render_image_capture_tab(exam_id: int | None) -> None:
             suffix = ".webm" if "webm" in mime_type else ".mp4"
             video_path = video_dir / f"filmagem_{timestamp}{suffix}"
             video_path.write_bytes(video_bytes)
+            video_path = _try_convert_video_to_mp4(video_path)
             add_exam_video(exam_id, str(video_path))
             st.success(f"Filmagem salva: {video_path.name}")
 
@@ -493,6 +522,17 @@ def render_image_capture_tab(exam_id: int | None) -> None:
             col = selected_cols[idx % 4]
             col.image(path, use_container_width=True)
             col.caption(get_image_caption(Path(path), exam_id=exam_id))
+
+    st.markdown("### Filmagens salvas")
+    if exam_id:
+        video_dir = Path("captured_videos") / f"exam_{exam_id}"
+        videos = sorted([p for p in video_dir.glob("*") if p.suffix.lower() in {".mp4", ".webm", ".mov"}], reverse=True) if video_dir.exists() else []
+        if not videos:
+            st.info("Nenhuma filmagem salva para este exame.")
+        else:
+            for video in videos:
+                st.caption(video.name)
+                st.video(str(video))
 
 
 def render_app() -> None:

@@ -14,10 +14,11 @@ def render_video_recorder(*, key: str) -> tuple[bytes, str] | None:
     value: dict[str, Any] | None = _video_recorder(key=key, default=None)
     if not value:
         return None
-    encoded = value.get("data_base64")
+    data_url = value.get("data_url")
     mime_type = value.get("mime_type", "video/webm")
-    if not isinstance(encoded, str):
+    if not isinstance(data_url, str) or "," not in data_url:
         return None
+    _, encoded = data_url.split(",", 1)
     try:
         data = base64.b64decode(encoded)
     except Exception:

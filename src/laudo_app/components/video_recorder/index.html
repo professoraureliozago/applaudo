@@ -65,16 +65,18 @@
         recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data) }
         recorder.onstop = async () => {
           const blob = new Blob(chunks, { type: "video/webm" })
-          const buf = await blob.arrayBuffer()
-          const bytes = btoa(String.fromCharCode(...new Uint8Array(buf)))
-          setValue({
-            mime_type: "video/webm",
-            data_base64: bytes,
-            timestamp: Date.now(),
-          })
-          statusEl.textContent = `Gravação finalizada (${Math.round(blob.size / 1024)} KB)`
-          startBtn.disabled = false
-          stopBtn.disabled = true
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            setValue({
+              mime_type: "video/webm",
+              data_url: reader.result,
+              timestamp: Date.now(),
+            })
+            statusEl.textContent = `Gravação finalizada (${Math.round(blob.size / 1024)} KB)`
+            startBtn.disabled = false
+            stopBtn.disabled = true
+          }
+          reader.readAsDataURL(blob)
         }
         recorder.start()
         statusEl.textContent = "Gravando..."
@@ -83,7 +85,10 @@
       }
 
       function stopRecord() {
-        if (recorder && recorder.state === "recording") recorder.stop()
+        if (recorder && recorder.state === "recording") {
+          statusEl.textContent = "Finalizando gravação..."
+          recorder.stop()
+        }
       }
 
       startBtn.addEventListener("click", startRecord)
