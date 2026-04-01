@@ -116,6 +116,7 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - A galeria abre na mesma aba com miniaturas e legenda automática para marcar as imagens que irão para o laudo.
 - No sidebar, o upload manual para PDF aceita múltiplas imagens de uma vez (sem limite fixo).
 - Modo WebRTC custom por componente frontend: stream contínuo com **snapshot por clique direto no frame**.
+- A filmagem do exame pode ser gravada no app (iniciar/parar) e vinculada ao exame ativo.
 - As imagens marcadas são anexadas na lateral direita do PDF, em blocos de 4 imagens por página (gerando páginas adicionais conforme necessário).
 - A aba mostra quantas imagens estão selecionadas e a estimativa de páginas de imagens no PDF.
 - Cada imagem recebe legenda automática (ex.: ceco, pós-polipectomia) exibida abaixo da foto no PDF.
@@ -130,6 +131,7 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - Médico solicitante e convênio possuem sugestões com auto preenchimento por histórico já salvo.
 - Na revisão por seção, cada campo tem botão **Revisar texto** para aplicar somente modelos daquele campo.
 - O arquivo de templates principal é protegido com backup automático (`colonoscopia_templates.backup.json`) para evitar perda acidental de modelos.
+- A cada salvamento de templates é criado backup versionado em `templates/backups/` e o arquivo default é sincronizado.
 - Não é permitido criar paciente duplicado com a mesma combinação **nome + data de nascimento** (normalização por nome).
 - Em **Novo exame**, a idade é calculada automaticamente pela data de nascimento.
 - Em **Abrir exame existente**, é possível buscar por nome do paciente, abrir, editar e excluir exame (com confirmação de 2 cliques).

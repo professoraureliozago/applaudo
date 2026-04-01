@@ -45,6 +45,7 @@ from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
+from src.laudo_app.video_recorder_component import render_video_recorder
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
@@ -92,8 +93,14 @@ def save_templates(data: dict[str, Any]) -> None:
         raise RuntimeError("Bloqueado: tentativa de salvar templates sem seções (evita apagar modelos).")
     if TEMPLATES_PATH.exists():
         TEMPLATES_BACKUP_PATH.write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+        backups_dir = Path("templates/backups")
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        ts_name = f"colonoscopia_templates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        (backups_dir / ts_name).write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     with TEMPLATES_PATH.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    # mantém default sincronizado com última versão estável salva
+    TEMPLATES_DEFAULT_PATH.write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _to_iso_date(d: date) -> str:
@@ -435,20 +442,19 @@ def render_image_capture_tab(exam_id: int | None) -> None:
             st.success(f"Snapshot salvo por clique: {saved.name} ({auto_caption})")
 
     st.markdown("#### Filmagem do exame")
-    st.caption("Para maior segurança/compatibilidade, a filmagem pode ser anexada por upload de arquivo.")
-    video_file = st.file_uploader("Anexar filmagem (mp4/webm/mov)", type=["mp4", "webm", "mov"], key="exam_video_upload")
-    if st.button("Salvar filmagem do exame"):
+    st.caption("Clique em iniciar/parar no gravador abaixo para capturar a filmagem do exame.")
+    video_record = render_video_recorder(key=f"video-recorder-{exam_id or 'draft'}")
+    if video_record:
+        video_bytes, mime_type = video_record
         if not exam_id:
-            st.warning("Crie/abra um exame antes de salvar filmagem.")
-        elif not video_file:
-            st.warning("Selecione um arquivo de vídeo para anexar.")
+            st.warning("Abra/salve um exame antes de registrar filmagem no banco.")
         else:
             video_dir = Path("captured_videos") / f"exam_{exam_id}"
             video_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            suffix = Path(video_file.name).suffix or ".mp4"
+            suffix = ".webm" if "webm" in mime_type else ".mp4"
             video_path = video_dir / f"filmagem_{timestamp}{suffix}"
-            video_path.write_bytes(video_file.getvalue())
+            video_path.write_bytes(video_bytes)
             add_exam_video(exam_id, str(video_path))
             st.success(f"Filmagem salva: {video_path.name}")
 
@@ -557,7 +563,6 @@ def render_app() -> None:
             st.markdown("### Cadastro do paciente e exame")
             patient_name = st.text_input("Nome do Paciente")
             sexo = st.selectbox("Sexo", ["", "Feminino", "Masculino"])
-            st.session_state["birth_input"] = st.session_state.get("draft_birth_date_text", st.session_state.get("birth_input", ""))
             birth_text = st.text_input(
                 "Data de Nascimento (DD/MM/AAAA)",
                 key="birth_input",
