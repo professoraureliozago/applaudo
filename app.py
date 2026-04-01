@@ -246,11 +246,22 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
     form_title = f"Editando modelo: {model_for_form.get('name', 'sem_nome')}" if editing_this_section and 0 <= edit_idx < len(models) else "Adicionar novo modelo"
     submit_label = "Atualizar modelo" if editing_this_section and 0 <= edit_idx < len(models) else "Salvar modelo"
 
+    name_key = "model_form_name"
+    keywords_key = "model_form_keywords"
+    text_key = "model_form_text"
+    mode_key = "model_form_mode"
+    current_mode = f"{selected_id}:{edit_idx}" if editing_this_section and 0 <= edit_idx < len(models) else f"{selected_id}:new"
+    if st.session_state.get(mode_key) != current_mode:
+        st.session_state[name_key] = model_for_form.get("name", "")
+        st.session_state[keywords_key] = ", ".join(model_for_form.get("keywords", []))
+        st.session_state[text_key] = model_for_form.get("text", "")
+        st.session_state[mode_key] = current_mode
+
     with st.form("model_form"):
         st.markdown(f"### {form_title}")
-        model_name = st.text_input("Nome do modelo", value=model_for_form.get("name", ""))
-        keywords_csv = st.text_input("Palavras-chave (separadas por vírgula)", value=", ".join(model_for_form.get("keywords", [])))
-        model_text = st.text_area("Texto do modelo", value=model_for_form.get("text", ""))
+        model_name = st.text_input("Nome do modelo", key=name_key)
+        keywords_csv = st.text_input("Palavras-chave (separadas por vírgula)", key=keywords_key)
+        model_text = st.text_area("Texto do modelo", key=text_key)
         col_a, col_b = st.columns(2)
         submitted = col_a.form_submit_button(submit_label)
         cancel_edit = col_b.form_submit_button("Cancelar edição")
@@ -271,6 +282,9 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
             else:
                 models.append(payload)
                 st.success("Modelo salvo com sucesso.")
+                st.session_state[name_key] = ""
+                st.session_state[keywords_key] = ""
+                st.session_state[text_key] = ""
             save_templates(templates_data)
             st.session_state["editing_model"] = None
             st.rerun()
@@ -611,6 +625,7 @@ def render_app() -> None:
     st.session_state.setdefault("flow_mode", "Novo exame")
     st.session_state.setdefault("pending_transcript_append", "")
     st.session_state.setdefault("pending_section_updates", {})
+    st.session_state.setdefault("last_auto_sections", {})
     st.session_state.setdefault("cleaned_unassigned_once", False)
     st.session_state.setdefault("last_video_capture_ts", 0)
     if not st.session_state.get("cleaned_unassigned_once"):
@@ -642,6 +657,7 @@ def render_app() -> None:
             st.session_state["current_exam_id"] = None
             st.session_state["selected_gallery_paths"] = []
             st.session_state["report"] = None
+            st.session_state["last_auto_sections"] = {}
             st.session_state["transcript_input"] = ""
             st.session_state["draft_doctor_name"] = "Dr(a)."
             st.session_state["draft_exam_date"] = date.today()
@@ -779,6 +795,7 @@ def render_app() -> None:
                         loaded.secoes = report_data.get("sections", {})
                         loaded.ensure_sections()
                         st.session_state["report"] = loaded
+                        st.session_state["last_auto_sections"] = dict(loaded.secoes)
                         st.session_state["transcript_input"] = report_data.get("transcript", "")
                     st.success(f"Exame #{selected_exam['id']} carregado.")
                 if c_delete.button("Excluir exame (2 cliques)"):
@@ -878,19 +895,41 @@ def render_app() -> None:
             convenio_nome = current_exam["convenio"] if current_exam else st.session_state.get("current_patient_convenio", "")
             data_exam_iso = current_exam["exam_date"] if current_exam else _to_iso_date(st.session_state.get("draft_exam_date", date.today()))
             hora_exam = current_exam["exam_time"] if current_exam else st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M")
-            report = ReportData(
-                paciente=paciente_nome,
-                medico=medico_nome,
-                sexo=sexo_nome,
-                idade=str(max(calculate_age(_to_iso_date(birth_date)), 0)),
-                data_exame=_to_br_date(data_exam_iso),
-                hora_exame=hora_exam,
-                convenio=convenio_nome,
-                image_bytes=gallery_bytes + [img.getvalue() for img in uploaded_images],
-                image_captions=gallery_captions + manual_captions,
-            )
-            report.secoes = engine.render_from_transcript(st.session_state["transcript_input"])
+            report = st.session_state.get("report")
+            if report is None:
+                report = ReportData(
+                    paciente=paciente_nome,
+                    medico=medico_nome,
+                    sexo=sexo_nome,
+                    idade=str(max(calculate_age(_to_iso_date(birth_date)), 0)),
+                    data_exame=_to_br_date(data_exam_iso),
+                    hora_exame=hora_exam,
+                    convenio=convenio_nome,
+                    image_bytes=gallery_bytes + [img.getvalue() for img in uploaded_images],
+                    image_captions=gallery_captions + manual_captions,
+                )
+            else:
+                report.paciente = paciente_nome
+                report.medico = medico_nome
+                report.sexo = sexo_nome
+                report.idade = str(max(calculate_age(_to_iso_date(birth_date)), 0))
+                report.data_exame = _to_br_date(data_exam_iso)
+                report.hora_exame = hora_exam
+                report.convenio = convenio_nome
+                report.image_bytes = gallery_bytes + [img.getvalue() for img in uploaded_images]
+                report.image_captions = gallery_captions + manual_captions
+
+            rendered_sections = engine.render_from_transcript(st.session_state["transcript_input"])
+            last_auto_sections = st.session_state.get("last_auto_sections", {})
             report.ensure_sections()
+            for section, new_text in rendered_sections.items():
+                current_text = report.secoes.get(section, "")
+                previous_auto = str(last_auto_sections.get(section, ""))
+                should_update = (not str(current_text).strip()) or (str(current_text).strip() == previous_auto.strip())
+                if should_update and str(new_text).strip():
+                    report.secoes[section] = new_text
+            report.ensure_sections()
+            st.session_state["last_auto_sections"] = dict(rendered_sections)
             st.session_state["report"] = report
 
         report: ReportData | None = st.session_state.get("report")
