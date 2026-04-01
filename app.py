@@ -542,7 +542,16 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
     st.markdown("### Filmagens salvas")
     video_dir = Path("captured_videos") / (f"exam_{exam_id}" if exam_id else "unassigned")
-    videos = sorted([p for p in video_dir.glob("*") if p.suffix.lower() in {".mp4", ".webm", ".mov"}], reverse=True) if video_dir.exists() else []
+    videos_raw = [p for p in video_dir.glob("*") if p.suffix.lower() in {".mp4", ".webm", ".mov"}] if video_dir.exists() else []
+    # deduplicação defensiva por caminho absoluto
+    seen: set[str] = set()
+    videos: list[Path] = []
+    for p in sorted(videos_raw, reverse=True):
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        videos.append(p)
     if not videos:
         st.info("Nenhuma filmagem salva para este exame.")
     else:
@@ -559,6 +568,8 @@ def render_image_capture_tab(exam_id: int | None) -> None:
                 if pending == current_key:
                     video.unlink(missing_ok=True)
                     st.session_state["delete_video_pending"] = None
+                    if st.session_state.get("selected_video_path") == current_key:
+                        st.session_state["selected_video_path"] = None
                     st.success(f"Vídeo {video.name} excluído.")
                     st.rerun()
                 else:
@@ -568,6 +579,9 @@ def render_image_capture_tab(exam_id: int | None) -> None:
         if selected_video and Path(selected_video).exists():
             st.markdown("#### Reprodutor de vídeo")
             st.video(selected_video)
+            if st.button("Fechar reprodutor"):
+                st.session_state["selected_video_path"] = None
+                st.rerun()
 
 
 def render_app() -> None:
