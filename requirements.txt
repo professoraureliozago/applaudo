@@ -1,0 +1,7 @@
+streamlit>=1.32,<2
+reportlab>=4.0,<5
+python-dateutil>=2.8,<3
+openai>=1.40,<2
+faster-whisper>=1.0,<2
+Pillow>=10,<12
+pytest>=8.0,<9
