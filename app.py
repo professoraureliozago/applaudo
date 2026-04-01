@@ -490,38 +490,48 @@ def render_image_capture_tab(exam_id: int | None) -> None:
     st.markdown("---")
     st.markdown("### Galeria de imagens salvas")
     images = list_captured_images(exam_id=exam_id)
-
     if not images:
         st.info("Nenhuma imagem salva ainda.")
-        return
+        st.session_state["selected_gallery_paths"] = []
+    else:
+        st.caption("Marque as imagens que deseja anexar ao laudo.")
+        cols = st.columns(4)
+        prev_selected = set(st.session_state.get("selected_gallery_paths", []))
+        selected_paths: list[str] = []
 
-    st.caption("Marque as imagens que deseja anexar ao laudo.")
-    cols = st.columns(4)
-    prev_selected = set(st.session_state.get("selected_gallery_paths", []))
-    selected_paths: list[str] = []
+        for idx, img in enumerate(images):
+            col = cols[idx % 4]
+            col.image(str(img), use_container_width=True)
+            current_caption = get_image_caption(img, exam_id=exam_id)
+            new_caption = col.text_input("Legenda", value=current_caption, key=f"cap_{exam_id}_{img.name}")
+            if new_caption != current_caption:
+                set_image_caption(img, new_caption, exam_id=exam_id)
+            checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{exam_id}_{img.name}", value=str(img) in prev_selected)
+            if checked:
+                selected_paths.append(str(img))
+            if col.button("Excluir imagem (2 cliques)", key=f"del_img_{exam_id}_{img.name}"):
+                pending = st.session_state.get("delete_image_pending")
+                current_key = str(img)
+                if pending == current_key:
+                    img.unlink(missing_ok=True)
+                    st.session_state["delete_image_pending"] = None
+                    st.success(f"Imagem {img.name} excluída.")
+                    st.rerun()
+                else:
+                    st.session_state["delete_image_pending"] = current_key
+                    st.warning("Clique novamente para confirmar exclusão da imagem.")
 
-    for idx, img in enumerate(images):
-        col = cols[idx % 4]
-        col.image(str(img), use_container_width=True)
-        current_caption = get_image_caption(img, exam_id=exam_id)
-        new_caption = col.text_input("Legenda", value=current_caption, key=f"cap_{exam_id}_{img.name}")
-        if new_caption != current_caption:
-            set_image_caption(img, new_caption, exam_id=exam_id)
-        checked = col.checkbox(f"Selecionar {img.name}", key=f"sel_{exam_id}_{img.name}", value=str(img) in prev_selected)
-        if checked:
-            selected_paths.append(str(img))
+        st.session_state["selected_gallery_paths"] = selected_paths
 
-    st.session_state["selected_gallery_paths"] = selected_paths
-
-    current = st.session_state.get("selected_gallery_paths", [])
-    if current:
-        st.info(f"Imagens atualmente marcadas para o PDF: {len(current)} (aprox. {ceil(len(current) / 4)} página(s) de imagens)")
-        st.markdown("#### Miniaturas selecionadas para PDF")
-        selected_cols = st.columns(4)
-        for idx, path in enumerate(current):
-            col = selected_cols[idx % 4]
-            col.image(path, use_container_width=True)
-            col.caption(get_image_caption(Path(path), exam_id=exam_id))
+        current = st.session_state.get("selected_gallery_paths", [])
+        if current:
+            st.info(f"Imagens atualmente marcadas para o PDF: {len(current)} (aprox. {ceil(len(current) / 4)} página(s) de imagens)")
+            st.markdown("#### Miniaturas selecionadas para PDF")
+            selected_cols = st.columns(4)
+            for idx, path in enumerate(current):
+                col = selected_cols[idx % 4]
+                col.image(path, use_container_width=True)
+                col.caption(get_image_caption(Path(path), exam_id=exam_id))
 
     st.markdown("### Filmagens salvas")
     if exam_id:
@@ -530,9 +540,28 @@ def render_image_capture_tab(exam_id: int | None) -> None:
         if not videos:
             st.info("Nenhuma filmagem salva para este exame.")
         else:
-            for video in videos:
-                st.caption(video.name)
-                st.video(str(video))
+            st.markdown("#### Miniaturas de vídeo")
+            vcols = st.columns(3)
+            for idx, video in enumerate(videos):
+                col = vcols[idx % 3]
+                col.caption(video.name)
+                if col.button("Abrir vídeo", key=f"open_vid_{video.name}"):
+                    st.session_state["selected_video_path"] = str(video)
+                if col.button("Excluir vídeo (2 cliques)", key=f"del_vid_{video.name}"):
+                    pending = st.session_state.get("delete_video_pending")
+                    current_key = str(video)
+                    if pending == current_key:
+                        video.unlink(missing_ok=True)
+                        st.session_state["delete_video_pending"] = None
+                        st.success(f"Vídeo {video.name} excluído.")
+                        st.rerun()
+                    else:
+                        st.session_state["delete_video_pending"] = current_key
+                        st.warning("Clique novamente para confirmar exclusão do vídeo.")
+            selected_video = st.session_state.get("selected_video_path")
+            if selected_video and Path(selected_video).exists():
+                st.markdown("#### Reprodutor de vídeo")
+                st.video(selected_video)
 
 
 def render_app() -> None:
@@ -570,6 +599,10 @@ def render_app() -> None:
     st.session_state.setdefault("flow_mode", "Novo exame")
     st.session_state.setdefault("pending_transcript_append", "")
     st.session_state.setdefault("pending_section_updates", {})
+    st.session_state.setdefault("cleaned_unassigned_once", False)
+    if not st.session_state.get("cleaned_unassigned_once"):
+        clear_unassigned_images()
+        st.session_state["cleaned_unassigned_once"] = True
 
     with st.sidebar:
         st.header("Exames")

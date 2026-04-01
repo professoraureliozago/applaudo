@@ -121,6 +121,8 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - As imagens marcadas são anexadas na lateral direita do PDF, em blocos de 4 imagens por página (gerando páginas adicionais conforme necessário).
 - A aba mostra quantas imagens estão selecionadas e a estimativa de páginas de imagens no PDF.
 - Cada imagem recebe legenda automática (ex.: ceco, pós-polipectomia) exibida abaixo da foto no PDF.
+- Imagens e vídeos podem ser excluídos com confirmação em 2 cliques.
+- Vídeos salvos aparecem como miniaturas/lista com botão para abrir no reprodutor embutido.
 
 ## Cadastro confiável de paciente e exame (SQLite)
 
