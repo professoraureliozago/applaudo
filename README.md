@@ -119,6 +119,7 @@ Também foi adicionada a tarefa `.vscode/tasks.json` para instalar automaticamen
 - A filmagem do exame pode ser gravada no app (iniciar/parar) e vinculada ao exame ativo.
 - Ao encerrar a gravação, o app tenta compactar para MP4 (`ffmpeg` quando disponível) e exibe as filmagens salvas com player embutido.
 - Mesmo antes de salvar o exame/laudo, filmagens ficam visíveis em rascunho e são vinculadas ao exame no momento do **Salvar exame**.
+- Ao iniciar o app/novo exame, mídias temporárias de rascunho são limpas para não exibir gravações antigas.
 - As imagens marcadas são anexadas na lateral direita do PDF, em blocos de 4 imagens por página (gerando páginas adicionais conforme necessário).
 - A aba mostra quantas imagens estão selecionadas e a estimativa de páginas de imagens no PDF.
 - Cada imagem recebe legenda automática (ex.: ceco, pós-polipectomia) exibida abaixo da foto no PDF.
