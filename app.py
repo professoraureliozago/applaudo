@@ -928,6 +928,7 @@ def render_app() -> None:
                 should_update = (not str(current_text).strip()) or (str(current_text).strip() == previous_auto.strip())
                 if should_update and str(new_text).strip():
                     report.secoes[section] = new_text
+                    st.session_state[f"sec_{section}"] = new_text
             report.ensure_sections()
             st.session_state["last_auto_sections"] = dict(rendered_sections)
             st.session_state["report"] = report
