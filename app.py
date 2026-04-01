@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 from datetime import date, datetime
-from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -532,15 +531,6 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
         st.session_state["selected_gallery_paths"] = selected_paths
 
-        current = st.session_state.get("selected_gallery_paths", [])
-        if current:
-            st.info(f"Imagens atualmente marcadas para o PDF: {len(current)} (aprox. {ceil(len(current) / 4)} página(s) de imagens)")
-            st.markdown("#### Miniaturas selecionadas para PDF")
-            selected_cols = st.columns(4)
-            for idx, path in enumerate(current):
-                col = selected_cols[idx % 4]
-                col.image(path, use_container_width=True)
-                col.caption(get_image_caption(Path(path), exam_id=exam_id))
 
     st.markdown("### Filmagens salvas")
     video_dir = Path("captured_videos") / (f"exam_{exam_id}" if exam_id else "unassigned")
@@ -806,19 +796,16 @@ def render_app() -> None:
                         st.warning("Clique novamente para confirmar exclusão.")
 
         st.markdown("---")
-        st.markdown("**Imagens enviadas manualmente para o PDF (sem limite fixo)**")
-        uploaded_images = st.file_uploader(
-            "Envie uma ou mais imagens",
-            type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-            key="pdf_imgs_multi",
-        )
+        uploaded_images: list = []
         selected_preview = st.session_state.get("selected_gallery_paths", [])
-        if selected_preview:
-            st.markdown("**Miniaturas selecionadas para o laudo**")
-            for path in selected_preview:
+        existing_selected_preview = [path for path in selected_preview if Path(path).exists()]
+        if existing_selected_preview:
+            st.markdown("**Imagens selecionadas para o PDF**")
+            for path in existing_selected_preview:
                 st.image(path, use_container_width=True)
                 st.caption(get_image_caption(Path(path), exam_id=st.session_state.get("current_exam_id")))
+        elif selected_preview:
+            st.warning("Algumas imagens selecionadas não existem mais. Atualize a seleção na aba Imagens.")
 
     current_exam = get_exam(st.session_state["current_exam_id"]) if st.session_state.get("current_exam_id") else None
     if current_exam:
