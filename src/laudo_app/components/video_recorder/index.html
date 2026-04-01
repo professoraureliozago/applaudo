@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body { margin: 0; font-family: sans-serif; background: #f8f9fa; }
-      video { width: 100%; background: #111; border-radius: 8px; }
+      video {
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+        background: #111;
+        border-radius: 8px;
+        display: block;
+      }
       .controls { display: flex; gap: 8px; margin-top: 8px; }
       button { padding: 8px 12px; border: 0; border-radius: 6px; cursor: pointer; }
       .start { background: #0a7; color: #fff; }
@@ -37,12 +44,18 @@
       function setReady() { post("streamlit:componentReady", { apiVersion: 1 }) }
       function setHeight(h) { post("streamlit:setFrameHeight", { height: h }) }
       function setValue(v) { post("streamlit:setComponentValue", { value: v }) }
+      function updateFrameHeight() {
+        const ratio = video.videoWidth && video.videoHeight ? (video.videoHeight / video.videoWidth) : (9 / 16)
+        const videoHeight = Math.max(280, Math.floor(video.clientWidth * ratio))
+        setHeight(videoHeight + 120)
+      }
 
       async function ensureStream() {
         if (stream) return
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         video.srcObject = stream
         statusEl.textContent = "Câmera pronta"
+        updateFrameHeight()
       }
 
       async function startRecord() {
@@ -75,9 +88,11 @@
 
       startBtn.addEventListener("click", startRecord)
       stopBtn.addEventListener("click", stopRecord)
+      video.addEventListener("loadedmetadata", updateFrameHeight)
+      window.addEventListener("resize", updateFrameHeight)
 
       setReady()
-      setHeight(360)
+      setHeight(520)
       ensureStream().catch((e) => { statusEl.textContent = `Erro câmera: ${e.message || e}` })
     </script>
   </body>
