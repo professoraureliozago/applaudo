@@ -475,7 +475,14 @@ def render_image_capture_tab(exam_id: int | None) -> None:
     if video_record:
         video_bytes, mime_type = video_record
         if not exam_id:
-            st.warning("Abra/salve um exame antes de registrar filmagem no banco.")
+            video_dir = Path("captured_videos") / "unassigned"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            suffix = ".webm" if "webm" in mime_type else ".mp4"
+            video_path = video_dir / f"filmagem_{timestamp}{suffix}"
+            video_path.write_bytes(video_bytes)
+            video_path = _try_convert_video_to_mp4(video_path)
+            st.success(f"Filmagem salva em rascunho: {video_path.name}")
         else:
             video_dir = Path("captured_videos") / f"exam_{exam_id}"
             video_dir.mkdir(parents=True, exist_ok=True)
@@ -534,34 +541,33 @@ def render_image_capture_tab(exam_id: int | None) -> None:
                 col.caption(get_image_caption(Path(path), exam_id=exam_id))
 
     st.markdown("### Filmagens salvas")
-    if exam_id:
-        video_dir = Path("captured_videos") / f"exam_{exam_id}"
-        videos = sorted([p for p in video_dir.glob("*") if p.suffix.lower() in {".mp4", ".webm", ".mov"}], reverse=True) if video_dir.exists() else []
-        if not videos:
-            st.info("Nenhuma filmagem salva para este exame.")
-        else:
-            st.markdown("#### Miniaturas de vídeo")
-            vcols = st.columns(3)
-            for idx, video in enumerate(videos):
-                col = vcols[idx % 3]
-                col.caption(video.name)
-                if col.button("Abrir vídeo", key=f"open_vid_{video.name}"):
-                    st.session_state["selected_video_path"] = str(video)
-                if col.button("Excluir vídeo (2 cliques)", key=f"del_vid_{video.name}"):
-                    pending = st.session_state.get("delete_video_pending")
-                    current_key = str(video)
-                    if pending == current_key:
-                        video.unlink(missing_ok=True)
-                        st.session_state["delete_video_pending"] = None
-                        st.success(f"Vídeo {video.name} excluído.")
-                        st.rerun()
-                    else:
-                        st.session_state["delete_video_pending"] = current_key
-                        st.warning("Clique novamente para confirmar exclusão do vídeo.")
-            selected_video = st.session_state.get("selected_video_path")
-            if selected_video and Path(selected_video).exists():
-                st.markdown("#### Reprodutor de vídeo")
-                st.video(selected_video)
+    video_dir = Path("captured_videos") / (f"exam_{exam_id}" if exam_id else "unassigned")
+    videos = sorted([p for p in video_dir.glob("*") if p.suffix.lower() in {".mp4", ".webm", ".mov"}], reverse=True) if video_dir.exists() else []
+    if not videos:
+        st.info("Nenhuma filmagem salva para este exame.")
+    else:
+        st.markdown("#### Miniaturas de vídeo")
+        vcols = st.columns(3)
+        for idx, video in enumerate(videos):
+            col = vcols[idx % 3]
+            col.caption(video.name)
+            if col.button("Abrir vídeo", key=f"open_vid_{video.name}"):
+                st.session_state["selected_video_path"] = str(video)
+            if col.button("Excluir vídeo (2 cliques)", key=f"del_vid_{video.name}"):
+                pending = st.session_state.get("delete_video_pending")
+                current_key = str(video)
+                if pending == current_key:
+                    video.unlink(missing_ok=True)
+                    st.session_state["delete_video_pending"] = None
+                    st.success(f"Vídeo {video.name} excluído.")
+                    st.rerun()
+                else:
+                    st.session_state["delete_video_pending"] = current_key
+                    st.warning("Clique novamente para confirmar exclusão do vídeo.")
+        selected_video = st.session_state.get("selected_video_path")
+        if selected_video and Path(selected_video).exists():
+            st.markdown("#### Reprodutor de vídeo")
+            st.video(selected_video)
 
 
 def render_app() -> None:
@@ -631,6 +637,11 @@ def render_app() -> None:
             st.session_state["draft_birth_date_text"] = ""
             st.session_state["birth_input"] = ""
             clear_unassigned_images()
+            draft_video_dir = Path("captured_videos") / "unassigned"
+            if draft_video_dir.exists():
+                for p in draft_video_dir.glob("*"):
+                    if p.is_file():
+                        p.unlink(missing_ok=True)
 
         if flow == "Novo exame":
             st.markdown("### Cadastro do paciente e exame")
@@ -916,6 +927,18 @@ def render_app() -> None:
                 moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam.id)
                 for image_path in moved_images:
                     add_exam_image(exam.id, str(image_path), get_image_caption(image_path, exam_id=exam.id))
+                draft_video_dir = Path("captured_videos") / "unassigned"
+                exam_video_dir = Path("captured_videos") / f"exam_{exam.id}"
+                exam_video_dir.mkdir(parents=True, exist_ok=True)
+                if draft_video_dir.exists():
+                    for draft_video in sorted(draft_video_dir.glob("*")):
+                        if draft_video.suffix.lower() not in {".mp4", ".webm", ".mov"}:
+                            continue
+                        target = exam_video_dir / draft_video.name
+                        if target.exists():
+                            target = exam_video_dir / f"{target.stem}_{datetime.now().strftime('%H%M%S%f')}{target.suffix}"
+                        shutil.move(str(draft_video), str(target))
+                        add_exam_video(exam.id, str(target))
                 save_exam_report(
                     exam_id=exam.id,
                     transcript=st.session_state.get("transcript_input", ""),
