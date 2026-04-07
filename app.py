@@ -862,13 +862,14 @@ def render_app() -> None:
         else:
             st.warning("Nenhum paciente/exame ativo. Cadastre paciente ou abra exame para continuar.")
 
-    tab_gerar, tab_modelos, tab_imagens = st.tabs(["Gerar laudo", "Gerenciar modelos", "Imagens"])
+    tab_procedimento, tab_modelos = st.tabs(["Procedimento", "Gerenciar modelos"])
     with tab_modelos:
         render_template_manager(templates_data)
-    with tab_imagens:
-        render_image_capture_tab(st.session_state.get("current_exam_id"))
 
-    with tab_gerar:
+    with tab_procedimento:
+        st.caption("Tela única do procedimento: capture imagens/filmagem e dite o laudo no mesmo fluxo.")
+        render_image_capture_tab(st.session_state.get("current_exam_id"))
+        st.markdown("---")
         render_auto_transcription()
         st.subheader("Narração/Transcrição")
         pending_text = st.session_state.get("pending_transcript_append", "")
