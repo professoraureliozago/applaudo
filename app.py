@@ -45,6 +45,7 @@ from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
+from src.laudo_app.continuous_audio_component import render_continuous_audio
 from src.laudo_app.video_recorder_component import render_video_recorder
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
@@ -327,11 +328,18 @@ def _transcribe_chunk(audio_bytes: bytes, filename: str, provider: str, local_mo
             return None
 
 
-def _handle_mic_chunk(mic_audio, provider: str, local_model_size: str, openai_key: str, openai_model: str, force: bool = False) -> None:
-    if not mic_audio:
+def _handle_mic_audio_bytes(
+    audio_bytes: bytes,
+    filename: str,
+    provider: str,
+    local_model_size: str,
+    openai_key: str,
+    openai_model: str,
+    force: bool = False,
+) -> None:
+    if not audio_bytes:
         return
 
-    audio_bytes = mic_audio.getvalue()
     chunk_hash = hashlib.md5(audio_bytes).hexdigest()
     if not force and chunk_hash == st.session_state.get("last_mic_chunk_hash"):
         return
@@ -339,7 +347,7 @@ def _handle_mic_chunk(mic_audio, provider: str, local_model_size: str, openai_ke
     st.session_state["last_mic_chunk_hash"] = chunk_hash
     transcript = _transcribe_chunk(
         audio_bytes=audio_bytes,
-        filename=mic_audio.name or "audio_live.wav",
+        filename=filename,
         provider=provider,
         local_model_size=local_model_size,
         openai_key=openai_key,
@@ -347,9 +355,11 @@ def _handle_mic_chunk(mic_audio, provider: str, local_model_size: str, openai_ke
     )
     if not transcript:
         st.session_state["last_voice_status"] = "Falha na transcrição do trecho."
+        st.session_state["audio_metrics"]["transcription_failures"] += 1
         return
 
     st.session_state["last_voice_transcript"] = transcript
+    st.session_state["audio_metrics"]["chunks_processed"] += 1
     result = apply_live_command(
         transcript_chunk=transcript,
         recording_active=st.session_state["recording_active"],
@@ -358,6 +368,22 @@ def _handle_mic_chunk(mic_audio, provider: str, local_model_size: str, openai_ke
     st.session_state["recording_active"] = result.recording_active
     st.session_state["transcript_input"] = result.updated_draft
     st.session_state["last_voice_status"] = result.status_message
+    if result.status_message.startswith("Comando detectado"):
+        st.session_state["audio_metrics"]["commands_detected"] += 1
+
+
+def _handle_mic_chunk(mic_audio, provider: str, local_model_size: str, openai_key: str, openai_model: str, force: bool = False) -> None:
+    if not mic_audio:
+        return
+    _handle_mic_audio_bytes(
+        audio_bytes=mic_audio.getvalue(),
+        filename=mic_audio.name or "audio_live.wav",
+        provider=provider,
+        local_model_size=local_model_size,
+        openai_key=openai_key,
+        openai_model=openai_model,
+        force=force,
+    )
 
 
 def render_auto_transcription() -> None:
@@ -366,9 +392,7 @@ def render_auto_transcription() -> None:
 
     status = "ATIVA" if st.session_state["recording_active"] else "PAUSADA"
     st.info(f"Captura por comando de voz: **{status}**. Diga 'gravar'/'iniciar' para ativar e 'parar'/'pausar' para pausar.")
-    st.caption("A captura física do microfone no navegador ainda exige clicar para gravar; os comandos de voz controlam a anexação ao laudo após transcrição do trecho.")
-
-    st.caption("Fluxo recomendado: 1) grave um trecho no microfone; 2) clique em 'Processar trecho do microfone agora'; 3) veja a última transcrição e status abaixo.")
+    st.caption("Modo contínuo com VAD ativo: use os comandos de voz para controlar a anexação do texto ao rascunho.")
 
     b1, b2 = st.columns(2)
     if b1.button("Ativar captura"):  # fallback manual
@@ -376,47 +400,77 @@ def render_auto_transcription() -> None:
     if b2.button("Pausar captura"):  # fallback manual
         st.session_state["recording_active"] = False
 
-    st.markdown("**Modo 1: Microfone em tempo real por trechos (automático e cumulativo)**")
-    mic_audio = st.audio_input("Gravar trecho do exame", key="audio_input_live")
-    auto_mode = st.checkbox("Processar automaticamente novos trechos", value=True)
+    st.markdown("**Modo 1: Microfone contínuo + VAD (recomendado)**")
+    c_cfg1, c_cfg2, c_cfg3 = st.columns(3)
+    chunk_ms = c_cfg1.slider("Janela máx. por trecho (ms)", min_value=2000, max_value=8000, value=3500, step=250)
+    silence_ms = c_cfg2.slider("Silêncio para cortar (ms)", min_value=500, max_value=3000, value=1100, step=100)
+    vad_threshold = c_cfg3.slider("Sensibilidade VAD", min_value=0.005, max_value=0.05, value=0.018, step=0.001, format="%.3f")
 
-    c_proc1, c_proc2 = st.columns(2)
-    manual_process = c_proc1.button("Processar trecho do microfone agora")
-    if c_proc2.button("Diagnóstico de comando"):
+    live_chunk = render_continuous_audio(
+        key="continuous-audio",
+        chunk_ms=chunk_ms,
+        silence_ms=silence_ms,
+        vad_threshold=vad_threshold,
+    )
+    if live_chunk:
+        audio_bytes, mime_type, capture_ts = live_chunk
+        if capture_ts and capture_ts != st.session_state.get("last_continuous_audio_ts"):
+            st.session_state["last_continuous_audio_ts"] = capture_ts
+            suffix = ".webm" if "webm" in mime_type else ".wav"
+            _handle_mic_audio_bytes(
+                audio_bytes=audio_bytes,
+                filename=f"audio_live{suffix}",
+                provider=provider,
+                local_model_size=local_model_size,
+                openai_key=openai_key,
+                openai_model=openai_model,
+                force=False,
+            )
+
+    if st.button("Diagnóstico de comando"):
         if st.session_state.get("last_voice_transcript"):
             st.write(f"Última transcrição: {st.session_state['last_voice_transcript']}")
             st.write(f"Status: {st.session_state.get('last_voice_status', '')}")
         else:
             st.write("Ainda não há transcrição de trecho de microfone.")
 
-    if manual_process:
-        if not mic_audio:
-            st.warning("Grave um trecho no microfone antes de processar.")
-        else:
+    with st.expander("Fallback manual (st.audio_input)"):
+        mic_audio = st.audio_input("Gravar trecho do exame", key="audio_input_live")
+        auto_mode = st.checkbox("Processar automaticamente novos trechos", value=True)
+        manual_process = st.button("Processar trecho do microfone agora")
+        if manual_process:
+            if not mic_audio:
+                st.warning("Grave um trecho no microfone antes de processar.")
+            else:
+                _handle_mic_chunk(
+                    mic_audio=mic_audio,
+                    provider=provider,
+                    local_model_size=local_model_size,
+                    openai_key=openai_key,
+                    openai_model=openai_model,
+                    force=True,
+                )
+        if auto_mode and mic_audio:
             _handle_mic_chunk(
                 mic_audio=mic_audio,
                 provider=provider,
                 local_model_size=local_model_size,
                 openai_key=openai_key,
                 openai_model=openai_model,
-                force=True,
+                force=False,
             )
-
-    # processamento automático ao detectar novo trecho
-    if auto_mode and mic_audio:
-        _handle_mic_chunk(
-            mic_audio=mic_audio,
-            provider=provider,
-            local_model_size=local_model_size,
-            openai_key=openai_key,
-            openai_model=openai_model,
-            force=False,
-        )
 
     if st.session_state.get("last_voice_transcript"):
         st.success(f"Última transcrição detectada: {st.session_state['last_voice_transcript']}")
     if st.session_state.get("last_voice_status"):
         st.info(st.session_state["last_voice_status"])
+    metrics = st.session_state.get("audio_metrics", {})
+    st.caption(
+        "Métricas sessão — "
+        f"trechos processados: {metrics.get('chunks_processed', 0)} | "
+        f"comandos detectados: {metrics.get('commands_detected', 0)} | "
+        f"falhas de transcrição: {metrics.get('transcription_failures', 0)}"
+    )
 
     st.markdown("**Modo 2: Upload de arquivo (opcional)**")
     uploaded_audio = st.file_uploader("Envie o áudio do exame (wav/mp3/m4a)", type=["wav", "mp3", "m4a", "ogg", "webm"], key="audio_upload")
@@ -628,6 +682,8 @@ def render_app() -> None:
     st.session_state.setdefault("last_auto_sections", {})
     st.session_state.setdefault("cleaned_unassigned_once", False)
     st.session_state.setdefault("last_video_capture_ts", 0)
+    st.session_state.setdefault("last_continuous_audio_ts", 0)
+    st.session_state.setdefault("audio_metrics", {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0})
     if not st.session_state.get("cleaned_unassigned_once"):
         clear_unassigned_images()
         draft_video_dir = Path("captured_videos") / "unassigned"
@@ -665,6 +721,8 @@ def render_app() -> None:
             st.session_state["draft_birth_date_text"] = ""
             st.session_state["birth_input"] = ""
             st.session_state["last_video_capture_ts"] = 0
+            st.session_state["last_continuous_audio_ts"] = 0
+            st.session_state["audio_metrics"] = {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0}
             clear_unassigned_images()
             draft_video_dir = Path("captured_videos") / "unassigned"
             if draft_video_dir.exists():

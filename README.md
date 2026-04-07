@@ -33,33 +33,33 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_windows.ps1
 
 ## Captura de áudio em tempo real (novo)
 
-Na aba **Gerar laudo** agora existem dois modos:
+Na aba **Procedimento** agora existem dois modos:
 
-1. **Modo 1: Gravação no microfone (tempo real por trechos)**
-   - Clique em **Gravar trecho do exame**.
-   - Ao finalizar o trecho, a transcrição acontece automaticamente.
-   - O texto é anexado ao rascunho quando a captura estiver ativa.
+1. **Modo 1: Microfone contínuo + VAD (recomendado)**
+   - Inicie o componente contínuo para captar fala por trechos automáticos.
+   - Ajuste janela máxima, silêncio de corte e sensibilidade do VAD.
+   - O texto é anexado ao rascunho quando a captura lógica estiver ativa.
 
-2. **Modo 2: Upload de arquivo de áudio**
-   - Fluxo anterior, para quando você já tiver um arquivo gravado.
+2. **Fallback manual (`st.audio_input`) e Upload de arquivo**
+   - Mantido para contingência, caso o contínuo não esteja disponível.
 
 Você pode repetir várias gravações curtas durante o exame e ir acumulando no rascunho.
 
 ## Captura por comando de voz: "gravar" / "parar" (novo)
 
-No modo de microfone em trechos:
+No modo contínuo (e no fallback manual):
 
 
-> Observação importante: por segurança do navegador, o início/parada da **captura física do microfone** ainda depende da interação no componente de gravação.
+> Observação importante: por segurança do navegador, o início da sessão de microfone ainda depende de interação do usuário no navegador.
 > Os comandos de voz (`gravar`/`parar`) controlam o estado de captura lógica do laudo (anexar/pausar transcrição) após o trecho ser processado.
 
-Fluxo recomendado: grave um trecho, clique em **Processar trecho do microfone agora**, e veja a **Última transcrição detectada**.
+Fluxo recomendado: iniciar contínuo, ditar normalmente e acompanhar **Última transcrição detectada** e **Métricas da sessão**.
 
 - Comandos de início aceitos: **"gravar"**, **"grava"**, **"iniciar"**, **"começar"**.
 - Comandos de parada aceitos: **"parar"**, **"pare"**, **"pausar"**.
 - Enquanto ativo, cada novo trecho transcrito é **anexado automaticamente** ao rascunho.
 
-Também há botões de fallback (**Ativar captura** / **Pausar captura**) e um botão **Processar trecho do microfone agora**. Se o comando de voz não estiver funcionando, use esse botão e confira a área de diagnóstico com a última transcrição detectada.
+Também há botões de fallback (**Ativar captura** / **Pausar captura**) e diagnóstico de comando para conferência rápida.
 
 ## Erro comum: `ModuleNotFoundError: No module named 'streamlit'`
 
