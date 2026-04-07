@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -59,12 +61,50 @@ def _transcribe_local(file_path: str, language: str, model_size: str) -> str:
     try:
         segments, _ = model.transcribe(file_path, language=language, vad_filter=True)
     except Exception as exc:  # pragma: no cover
-        raise RuntimeError(
-            "Falha ao transcrever áudio localmente. Verifique formato do arquivo e permissões da pasta temporária."
-        ) from exc
+        converted = _try_ffmpeg_to_wav(file_path)
+        if converted:
+            try:
+                segments, _ = model.transcribe(converted, language=language, vad_filter=True)
+            except Exception as second_exc:
+                raise RuntimeError(
+                    "Falha ao transcrever áudio localmente. Verifique formato do arquivo e permissões da pasta temporária."
+                ) from second_exc
+            finally:
+                try:
+                    os.remove(converted)
+                except OSError:
+                    pass
+        else:
+            raise RuntimeError(
+                "Falha ao transcrever áudio localmente. Verifique formato do arquivo e permissões da pasta temporária."
+            ) from exc
 
     text = " ".join(segment.text.strip() for segment in segments).strip()
     return text
+
+
+def _try_ffmpeg_to_wav(file_path: str) -> str | None:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    fd, wav_path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    cmd = [ffmpeg, "-y", "-i", file_path, "-ac", "1", "-ar", "16000", wav_path]
+    try:
+        completed = subprocess.run(cmd, capture_output=True, check=False)
+    except OSError:
+        try:
+            os.remove(wav_path)
+        except OSError:
+            pass
+        return None
+    if completed.returncode != 0:
+        try:
+            os.remove(wav_path)
+        except OSError:
+            pass
+        return None
+    return wav_path
 
 
 def _transcribe_openai(file_path: str, language: str, api_key: str | None, model: str) -> str:
