@@ -42,6 +42,7 @@
       let lastVoiceAt = 0
       let isRunning = false
       let currentDeviceId = ''
+      let recognition = null
 
       let chunkMs = 3500
       let silenceMs = 1100
@@ -151,6 +152,29 @@
         }
       }
 
+      function setupSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+        if (!SpeechRecognition) return
+        if (recognition) return
+        recognition = new SpeechRecognition()
+        recognition.lang = 'pt-BR'
+        recognition.interimResults = false
+        recognition.continuous = true
+        recognition.onresult = (event) => {
+          const result = event.results?.[event.results.length - 1]
+          if (!result || !result[0]) return
+          const text = String(result[0].transcript || '').trim()
+          if (!text) return
+          setValue({ transcript_text: text, timestamp: Date.now(), mime_type: 'text/plain' })
+        }
+        recognition.onerror = () => {}
+        recognition.onend = () => {
+          if (isRunning) {
+            try { recognition.start() } catch (_) {}
+          }
+        }
+      }
+
       async function startContinuous() {
         try {
           await ensureStream()
@@ -160,6 +184,10 @@
           stopBtn.disabled = false
           setStatus('Captura contínua ativa (VAD).')
           startRecorder()
+          setupSpeechRecognition()
+          if (recognition) {
+            try { recognition.start() } catch (_) {}
+          }
           if (tick) clearInterval(tick)
           tick = setInterval(tickVAD, 200)
         } catch (err) {
@@ -173,6 +201,9 @@
         stopBtn.disabled = true
         if (tick) clearInterval(tick)
         stopRecorder()
+        if (recognition) {
+          try { recognition.stop() } catch (_) {}
+        }
         setStatus('Captura contínua pausada.')
       }
 

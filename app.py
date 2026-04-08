@@ -372,6 +372,23 @@ def _handle_mic_audio_bytes(
         st.session_state["audio_metrics"]["commands_detected"] += 1
 
 
+def _apply_transcript_text(transcript: str) -> None:
+    if not transcript.strip():
+        return
+    st.session_state["last_voice_transcript"] = transcript
+    st.session_state["audio_metrics"]["chunks_processed"] += 1
+    result = apply_live_command(
+        transcript_chunk=transcript,
+        recording_active=st.session_state["recording_active"],
+        current_draft=st.session_state.get("transcript_input", ""),
+    )
+    st.session_state["recording_active"] = result.recording_active
+    st.session_state["transcript_input"] = result.updated_draft
+    st.session_state["last_voice_status"] = result.status_message
+    if result.status_message.startswith("Comando detectado"):
+        st.session_state["audio_metrics"]["commands_detected"] += 1
+
+
 def _handle_mic_chunk(mic_audio, provider: str, local_model_size: str, openai_key: str, openai_model: str, force: bool = False) -> None:
     if not mic_audio:
         return
@@ -401,6 +418,7 @@ def render_auto_transcription() -> None:
         st.session_state["recording_active"] = False
 
     st.markdown("**Modo 1: Microfone contínuo + VAD (recomendado)**")
+    st.caption("No provedor local, o modo contínuo prioriza reconhecimento de fala do navegador para evitar falhas de decodificação de áudio.")
     c_cfg1, c_cfg2, c_cfg3 = st.columns(3)
     chunk_ms = c_cfg1.slider("Janela máx. por trecho (ms)", min_value=2000, max_value=8000, value=3500, step=250)
     silence_ms = c_cfg2.slider("Silêncio para cortar (ms)", min_value=500, max_value=3000, value=1100, step=100)
@@ -413,19 +431,25 @@ def render_auto_transcription() -> None:
         vad_threshold=vad_threshold,
     )
     if live_chunk:
-        audio_bytes, mime_type, capture_ts = live_chunk
+        audio_bytes = live_chunk.get("audio_bytes")
+        mime_type = str(live_chunk.get("mime_type", "audio/wav"))
+        capture_ts = int(live_chunk.get("timestamp", 0) or 0)
+        transcript_text = str(live_chunk.get("transcript_text", "") or "")
         if capture_ts and capture_ts != st.session_state.get("last_continuous_audio_ts"):
             st.session_state["last_continuous_audio_ts"] = capture_ts
-            suffix = ".webm" if "webm" in mime_type else ".wav"
-            _handle_mic_audio_bytes(
-                audio_bytes=audio_bytes,
-                filename=f"audio_live{suffix}",
-                provider=provider,
-                local_model_size=local_model_size,
-                openai_key=openai_key,
-                openai_model=openai_model,
-                force=False,
-            )
+            if transcript_text.strip():
+                _apply_transcript_text(transcript_text)
+            elif provider == "openai" and isinstance(audio_bytes, (bytes, bytearray)) and len(audio_bytes) > 0:
+                suffix = ".webm" if "webm" in mime_type else ".wav"
+                _handle_mic_audio_bytes(
+                    audio_bytes=bytes(audio_bytes),
+                    filename=f"audio_live{suffix}",
+                    provider=provider,
+                    local_model_size=local_model_size,
+                    openai_key=openai_key,
+                    openai_model=openai_model,
+                    force=False,
+                )
 
     if st.button("Diagnóstico de comando"):
         if st.session_state.get("last_voice_transcript"):

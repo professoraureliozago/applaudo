@@ -16,7 +16,7 @@ def render_continuous_audio(
     chunk_ms: int = 3500,
     silence_ms: int = 1100,
     vad_threshold: float = 0.018,
-) -> tuple[bytes, str, int] | None:
+) -> dict[str, Any] | None:
     value: dict[str, Any] | None = _continuous_audio(
         key=key,
         chunk_ms=chunk_ms,
@@ -28,15 +28,23 @@ def render_continuous_audio(
         return None
 
     data_url = value.get("data_url")
-    if not isinstance(data_url, str) or "," not in data_url:
-        return None
-    _, encoded = data_url.split(",", 1)
-    try:
-        data = base64.b64decode(encoded)
-    except Exception:
+    transcript_text = value.get("transcript_text")
+    data: bytes | None = None
+    if isinstance(data_url, str) and "," in data_url:
+        _, encoded = data_url.split(",", 1)
+        try:
+            data = base64.b64decode(encoded)
+        except Exception:
+            data = None
+    if not data and not isinstance(transcript_text, str):
         return None
 
-    mime_type = str(value.get("mime_type", "audio/webm"))
+    mime_type = str(value.get("mime_type", "audio/wav"))
     timestamp = value.get("timestamp", 0)
     ts = int(timestamp) if isinstance(timestamp, (int, float)) else 0
-    return data, mime_type, ts
+    return {
+        "audio_bytes": data,
+        "mime_type": mime_type,
+        "timestamp": ts,
+        "transcript_text": transcript_text if isinstance(transcript_text, str) else "",
+    }
