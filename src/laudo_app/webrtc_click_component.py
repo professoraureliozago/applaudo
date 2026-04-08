@@ -17,7 +17,7 @@ def render_webrtc_click_snapshot(
     height: int = 540,
     image_format: str = "image/jpeg",
     image_quality: float = 0.92,
-) -> bytes | None:
+) -> tuple[bytes, int] | None:
     value: dict[str, Any] | None = _webrtc_click_snapshot(
         key=key,
         width=width,
@@ -30,11 +30,14 @@ def render_webrtc_click_snapshot(
         return None
 
     data_url = value.get("data_url")
+    timestamp = value.get("timestamp", 0)
     if not isinstance(data_url, str) or "," not in data_url:
         return None
 
     _, encoded = data_url.split(",", 1)
     try:
-        return base64.b64decode(encoded)
+        data = base64.b64decode(encoded)
     except Exception:
         return None
+    ts = int(timestamp) if isinstance(timestamp, (int, float)) else 0
+    return data, ts

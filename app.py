@@ -551,7 +551,15 @@ def render_image_capture_tab(exam_id: int | None) -> None:
     st.caption("Habilite o modo custom para exibir um frame de vídeo contínuo. Clique no próprio frame para capturar a imagem.")
     use_webrtc_custom = st.toggle("Habilitar captura WebRTC custom", value=False)
     if use_webrtc_custom:
-        snapshot_bytes = render_webrtc_click_snapshot(key="exam-webrtc-click", width=960, height=540)
+        snapshot_record = render_webrtc_click_snapshot(key="exam-webrtc-click", width=960, height=540)
+        if snapshot_record:
+            snapshot_bytes, capture_ts = snapshot_record
+            if capture_ts and capture_ts == st.session_state.get("last_webrtc_capture_ts"):
+                snapshot_bytes = b""
+            else:
+                st.session_state["last_webrtc_capture_ts"] = capture_ts
+        else:
+            snapshot_bytes = b""
         if snapshot_bytes:
             context_text = st.session_state.get("transcript_input", "") or st.session_state.get("last_voice_transcript", "")
             auto_caption = infer_caption_from_text(context_text)
@@ -706,6 +714,7 @@ def render_app() -> None:
     st.session_state.setdefault("last_auto_sections", {})
     st.session_state.setdefault("cleaned_unassigned_once", False)
     st.session_state.setdefault("last_video_capture_ts", 0)
+    st.session_state.setdefault("last_webrtc_capture_ts", 0)
     st.session_state.setdefault("last_continuous_audio_ts", 0)
     st.session_state.setdefault("audio_metrics", {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0})
     if not st.session_state.get("cleaned_unassigned_once"):
@@ -745,6 +754,7 @@ def render_app() -> None:
             st.session_state["draft_birth_date_text"] = ""
             st.session_state["birth_input"] = ""
             st.session_state["last_video_capture_ts"] = 0
+            st.session_state["last_webrtc_capture_ts"] = 0
             st.session_state["last_continuous_audio_ts"] = 0
             st.session_state["audio_metrics"] = {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0}
             clear_unassigned_images()
