@@ -764,7 +764,6 @@ def render_app() -> None:
                 if chosen_label != "-- selecionar --":
                     chosen = prefix_matches[labels.index(chosen_label)]
                     st.session_state["selected_existing_patient_id"] = chosen.id
-                    st.session_state["new_patient_name_input"] = chosen.name
                     st.session_state["birth_input"] = _to_br_date(chosen.birth_date)
                     st.session_state["current_patient_sexo"] = chosen.sexo
                     st.session_state["current_patient_convenio"] = chosen.convenio
