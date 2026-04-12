@@ -17,6 +17,8 @@ from src.laudo_app import ReportData, TemplateEngine
 from src.laudo_app.database import (
     add_exam_image,
     add_exam_video,
+    add_convenio_suggestion,
+    add_doctor_suggestion,
     calculate_age,
     create_exam,
     create_or_get_patient,
@@ -787,21 +789,33 @@ def render_app() -> None:
             doctor_default = st.session_state.get("draft_doctor_name", "Dr(a).")
             if doctor_default not in doctor_options:
                 doctor_options.append(doctor_default)
-            medico = st.selectbox(
+            medico_sugestao = st.selectbox(
                 "Nome do Médico Solicitante (com sugestões)",
                 options=doctor_options,
                 index=doctor_options.index(doctor_default),
             )
+            medico_novo = st.text_input("Ou digite novo médico solicitante (opcional)")
+            medico = medico_novo.strip() or medico_sugestao
+            if medico_novo.strip() and medico_novo.strip() not in doctor_options:
+                if st.button("Cadastrar novo médico solicitante"):
+                    add_doctor_suggestion(medico_novo.strip())
+                    st.success("Novo médico solicitante cadastrado nas sugestões.")
 
             convenio_options = [""] + list_convenios()
             convenio_default = st.session_state.get("current_patient_convenio", "")
             if convenio_default and convenio_default not in convenio_options:
                 convenio_options.append(convenio_default)
-            convenio = st.selectbox(
+            convenio_sugestao = st.selectbox(
                 "Convênio (com sugestões)",
                 options=convenio_options,
                 index=convenio_options.index(convenio_default) if convenio_default in convenio_options else 0,
             )
+            convenio_novo = st.text_input("Ou digite novo convênio (opcional)")
+            convenio = convenio_novo.strip() or convenio_sugestao
+            if convenio_novo.strip() and convenio_novo.strip() not in convenio_options:
+                if st.button("Cadastrar novo convênio"):
+                    add_convenio_suggestion(convenio_novo.strip())
+                    st.success("Novo convênio cadastrado nas sugestões.")
             now = datetime.now()
             data_exame_dt = st.date_input("Data do Exame", value=st.session_state.get("draft_exam_date", now.date()), format="DD/MM/YYYY")
             hora_exame_dt = st.time_input("Hora do exame", value=st.session_state.get("draft_exam_time", now.time().replace(second=0, microsecond=0)))
@@ -826,13 +840,12 @@ def render_app() -> None:
                         name=patient_name.strip(),
                         sexo=sexo,
                         birth_date_iso=_to_iso_date(nascimento),
-                        convenio=convenio,
                     )
                     st.session_state["current_patient_id"] = patient.id
                     st.session_state["current_patient_name"] = patient.name
                     st.session_state["current_patient_birth_date"] = patient.birth_date
                     st.session_state["current_patient_sexo"] = patient.sexo
-                    st.session_state["current_patient_convenio"] = patient.convenio
+                    st.session_state["current_patient_convenio"] = convenio
                     st.session_state["draft_doctor_name"] = medico
                     st.session_state["draft_exam_date"] = data_exame_dt
                     st.session_state["draft_exam_time"] = hora_exame_dt
@@ -841,6 +854,7 @@ def render_app() -> None:
                         doctor_name=medico,
                         exam_date_iso=_to_iso_date(data_exame_dt),
                         exam_time_hhmm=hora_exame_dt.strftime("%H:%M"),
+                        convenio=convenio,
                     )
                     st.session_state["current_exam_id"] = exam.id
                     st.session_state["selected_gallery_paths"] = []
@@ -878,6 +892,7 @@ def render_app() -> None:
                         doctor_name=selected_exam["doctor_name"],
                         exam_date_iso=_to_iso_date(date.today()),
                         exam_time_hhmm=datetime.now().strftime("%H:%M"),
+                        convenio=selected_exam.get("convenio", ""),
                     )
                     st.session_state["current_exam_id"] = new_exam.id
                     st.session_state["current_patient_id"] = selected_exam["patient_id"]
@@ -940,6 +955,7 @@ def render_app() -> None:
         )
         with st.expander("Editar dados do exame ativo"):
             new_doctor = st.text_input("Médico solicitante (edição)", value=current_exam["doctor_name"], key="edit_doctor_name")
+            new_convenio = st.text_input("Convênio (edição)", value=current_exam.get("convenio", ""), key="edit_convenio")
             new_exam_date = st.date_input(
                 "Data do exame (edição)",
                 value=datetime.strptime(current_exam["exam_date"], "%Y-%m-%d").date(),
@@ -957,7 +973,9 @@ def render_app() -> None:
                     doctor_name=new_doctor,
                     exam_date_iso=_to_iso_date(new_exam_date),
                     exam_time_hhmm=new_exam_time.strftime("%H:%M"),
+                    convenio=new_convenio,
                 )
+                st.session_state["current_patient_convenio"] = new_convenio
                 st.success("Dados do exame atualizados.")
                 st.rerun()
     else:
@@ -1084,6 +1102,7 @@ def render_app() -> None:
                         doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
                         exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
                         exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                        convenio=st.session_state.get("current_patient_convenio", ""),
                     )
                     exam = get_exam(int(active_exam_id))
                     if not exam:
@@ -1096,6 +1115,7 @@ def render_app() -> None:
                         doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
                         exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
                         exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                        convenio=st.session_state.get("current_patient_convenio", ""),
                     )
                     exam_id = created.id
                 moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam_id)

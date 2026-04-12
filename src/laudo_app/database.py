@@ -19,8 +19,8 @@ class Patient:
     normalized_name: str
     sexo: str
     birth_date: str
-    convenio: str
-    created_at: str
+    created_at: str = ""
+    convenio: str = ""
 
 
 @dataclass(slots=True)
@@ -30,6 +30,7 @@ class Exam:
     doctor_name: str
     exam_date: str
     exam_time: str
+    convenio: str
     created_at: str
     updated_at: str
 
@@ -52,7 +53,6 @@ def ensure_db() -> None:
                 normalized_name TEXT NOT NULL,
                 sexo TEXT DEFAULT '',
                 birth_date TEXT NOT NULL,
-                convenio TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 UNIQUE(normalized_name, birth_date)
             );
@@ -63,9 +63,18 @@ def ensure_db() -> None:
                 doctor_name TEXT DEFAULT '',
                 exam_date TEXT NOT NULL,
                 exam_time TEXT NOT NULL,
+                convenio TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS doctor_suggestions (
+                name TEXT PRIMARY KEY
+            );
+
+            CREATE TABLE IF NOT EXISTS convenio_suggestions (
+                name TEXT PRIMARY KEY
             );
 
             CREATE TABLE IF NOT EXISTS exam_images (
@@ -95,6 +104,9 @@ def ensure_db() -> None:
             );
             """
         )
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(exams)").fetchall()}
+        if "convenio" not in cols:
+            conn.execute("ALTER TABLE exams ADD COLUMN convenio TEXT DEFAULT ''")
 
 
 @contextmanager
@@ -141,7 +153,7 @@ def search_patients_by_name(name_fragment: str) -> list[Patient]:
     return [Patient(**dict(row)) for row in rows]
 
 
-def create_or_get_patient(name: str, sexo: str, birth_date_iso: str, convenio: str) -> tuple[Patient, bool]:
+def create_or_get_patient(name: str, sexo: str, birth_date_iso: str) -> tuple[Patient, bool]:
     normalized_name = _normalize_name(name)
     existing = find_patient(name, birth_date_iso)
     if existing:
@@ -150,44 +162,44 @@ def create_or_get_patient(name: str, sexo: str, birth_date_iso: str, convenio: s
     with _connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO patients(name, normalized_name, sexo, birth_date, convenio, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO patients(name, normalized_name, sexo, birth_date, created_at)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (name.strip(), normalized_name, sexo.strip(), birth_date_iso, convenio.strip(), _now_iso()),
+            (name.strip(), normalized_name, sexo.strip(), birth_date_iso, _now_iso()),
         )
         patient_id = cur.lastrowid
         row = conn.execute("SELECT * FROM patients WHERE id = ?", (patient_id,)).fetchone()
     return Patient(**dict(row)), True
 
 
-def create_exam(patient_id: int, doctor_name: str, exam_date_iso: str, exam_time_hhmm: str) -> Exam:
+def create_exam(patient_id: int, doctor_name: str, exam_date_iso: str, exam_time_hhmm: str, convenio: str = "") -> Exam:
     now = _now_iso()
     with _connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO exams(patient_id, doctor_name, exam_date, exam_time, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO exams(patient_id, doctor_name, exam_date, exam_time, convenio, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (patient_id, doctor_name.strip(), exam_date_iso, exam_time_hhmm, now, now),
+            (patient_id, doctor_name.strip(), exam_date_iso, exam_time_hhmm, convenio.strip(), now, now),
         )
         exam_id = cur.lastrowid
         row = conn.execute("SELECT * FROM exams WHERE id = ?", (exam_id,)).fetchone()
     return Exam(**dict(row))
 
 
-def update_exam(exam_id: int, doctor_name: str, exam_date_iso: str, exam_time_hhmm: str) -> None:
+def update_exam(exam_id: int, doctor_name: str, exam_date_iso: str, exam_time_hhmm: str, convenio: str = "") -> None:
     with _connect() as conn:
         conn.execute(
-            "UPDATE exams SET doctor_name=?, exam_date=?, exam_time=?, updated_at=? WHERE id=?",
-            (doctor_name.strip(), exam_date_iso, exam_time_hhmm, _now_iso(), exam_id),
+            "UPDATE exams SET doctor_name=?, exam_date=?, exam_time=?, convenio=?, updated_at=? WHERE id=?",
+            (doctor_name.strip(), exam_date_iso, exam_time_hhmm, convenio.strip(), _now_iso(), exam_id),
         )
 
 
 def list_exams(patient_id: int | None = None) -> list[dict]:
     query = (
         """
-        SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.created_at,
-               p.name AS patient_name, p.birth_date, p.sexo, p.convenio
+        SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.convenio, e.created_at,
+               p.name AS patient_name, p.birth_date, p.sexo
         FROM exams e
         JOIN patients p ON p.id = e.patient_id
         """
@@ -207,8 +219,8 @@ def get_exam(exam_id: int) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time,
-                   p.name AS patient_name, p.birth_date, p.sexo, p.convenio
+            SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.convenio,
+                   p.name AS patient_name, p.birth_date, p.sexo
             FROM exams e
             JOIN patients p ON p.id = e.patient_id
             WHERE e.id = ?
@@ -247,18 +259,36 @@ def add_exam_video(exam_id: int, file_path: str) -> None:
 
 def list_doctor_names() -> list[str]:
     with _connect() as conn:
-        rows = conn.execute(
+        exam_rows = conn.execute(
             "SELECT DISTINCT doctor_name FROM exams WHERE doctor_name IS NOT NULL AND TRIM(doctor_name) <> '' ORDER BY doctor_name"
         ).fetchall()
-    return [r["doctor_name"] for r in rows]
+        suggested_rows = conn.execute("SELECT name FROM doctor_suggestions ORDER BY name").fetchall()
+    names = {r["doctor_name"] for r in exam_rows} | {r["name"] for r in suggested_rows}
+    return sorted(n for n in names if n.strip())
 
 
 def list_convenios() -> list[str]:
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT convenio FROM patients WHERE convenio IS NOT NULL AND TRIM(convenio) <> '' ORDER BY convenio"
+        exam_rows = conn.execute(
+            "SELECT DISTINCT convenio FROM exams WHERE convenio IS NOT NULL AND TRIM(convenio) <> '' ORDER BY convenio"
         ).fetchall()
-    return [r["convenio"] for r in rows]
+        suggested_rows = conn.execute("SELECT name FROM convenio_suggestions ORDER BY name").fetchall()
+    names = {r["convenio"] for r in exam_rows} | {r["name"] for r in suggested_rows}
+    return sorted(n for n in names if n.strip())
+
+
+def add_doctor_suggestion(name: str) -> None:
+    if not name.strip():
+        return
+    with _connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO doctor_suggestions(name) VALUES (?)", (name.strip(),))
+
+
+def add_convenio_suggestion(name: str) -> None:
+    if not name.strip():
+        return
+    with _connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO convenio_suggestions(name) VALUES (?)", (name.strip(),))
 
 
 def save_exam_report(exam_id: int, transcript: str, sections: dict[str, str]) -> None:
