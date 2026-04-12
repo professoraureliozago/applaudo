@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -112,6 +113,11 @@ def _to_iso_date(d: date) -> str:
 
 def _to_br_date(iso_date: str) -> str:
     return datetime.strptime(iso_date, "%Y-%m-%d").strftime("%d/%m/%Y")
+
+
+def _normalize_for_search(text: str) -> str:
+    lowered = " ".join((text or "").strip().lower().split())
+    return "".join(ch for ch in unicodedata.normalize("NFD", lowered) if unicodedata.category(ch) != "Mn")
 
 
 def _parse_br_date(date_text: str) -> date | None:
@@ -758,7 +764,7 @@ def render_app() -> None:
             st.markdown("### Cadastro do paciente e exame")
             patient_name = st.text_input("Nome do Paciente", key="new_patient_name_input")
             existing_candidates = search_patients_by_name(patient_name) if patient_name.strip() else []
-            normalized_input = " ".join(patient_name.strip().lower().split())
+            normalized_input = _normalize_for_search(patient_name)
             prefix_matches = [p for p in existing_candidates if p.normalized_name.startswith(normalized_input)] if normalized_input else []
             if prefix_matches:
                 labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in prefix_matches]
