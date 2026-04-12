@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body { margin: 0; font-family: sans-serif; background: #f8f9fa; }
+      .preview-wrap {
+        max-width: 640px;
+      }
       video {
         width: 100%;
         height: auto;
@@ -21,7 +24,9 @@
     </style>
   </head>
   <body>
-    <video id="preview" autoplay playsinline muted></video>
+    <div class="preview-wrap">
+      <video id="preview" autoplay playsinline muted></video>
+    </div>
     <div class="controls">
       <button class="start" id="startBtn">Iniciar gravação</button>
       <button class="stop" id="stopBtn" disabled>Parar gravação</button>

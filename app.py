@@ -531,22 +531,6 @@ def render_image_capture_tab(exam_id: int | None) -> None:
     st.subheader("Captura e seleção de imagens")
     st.caption("Capture fotos durante o exame e marque as que devem ir para o laudo.")
 
-    st.markdown("#### Captura padrão")
-    camera_photo = st.camera_input("Visualização da captura (clique para tirar foto)", key="camera_live")
-    if st.button("Salvar foto capturada"):
-        if not camera_photo:
-            st.warning("Capture uma imagem antes de salvar.")
-        else:
-            suffix = ".jpg"
-            if camera_photo.type == "image/png":
-                suffix = ".png"
-            context_text = st.session_state.get("transcript_input", "") or st.session_state.get("last_voice_transcript", "")
-            auto_caption = infer_caption_from_text(context_text)
-            saved = save_captured_image(camera_photo.getvalue(), suffix=suffix, caption=auto_caption, exam_id=exam_id)
-            if exam_id:
-                add_exam_image(exam_id, str(saved), auto_caption)
-            st.success(f"Imagem salva: {saved.name} ({auto_caption})")
-
     st.markdown("#### Captura WebRTC custom por clique no frame")
     st.caption("Habilite o modo custom para exibir um frame de vídeo contínuo. Clique no próprio frame para capturar a imagem.")
     use_webrtc_custom = st.toggle("Habilitar captura WebRTC custom", value=False)
@@ -708,6 +692,8 @@ def render_app() -> None:
     st.session_state.setdefault("draft_exam_time", datetime.now().time().replace(second=0, microsecond=0))
     st.session_state.setdefault("draft_birth_date_text", "")
     st.session_state.setdefault("birth_input", "")
+    st.session_state.setdefault("new_patient_name_input", "")
+    st.session_state.setdefault("selected_existing_patient_id", None)
     st.session_state.setdefault("flow_mode", "Novo exame")
     st.session_state.setdefault("pending_transcript_append", "")
     st.session_state.setdefault("pending_section_updates", {})
@@ -753,6 +739,8 @@ def render_app() -> None:
             st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
             st.session_state["draft_birth_date_text"] = ""
             st.session_state["birth_input"] = ""
+            st.session_state["new_patient_name_input"] = ""
+            st.session_state["selected_existing_patient_id"] = None
             st.session_state["last_video_capture_ts"] = 0
             st.session_state["last_webrtc_capture_ts"] = 0
             st.session_state["last_continuous_audio_ts"] = 0
@@ -766,8 +754,25 @@ def render_app() -> None:
 
         if flow == "Novo exame":
             st.markdown("### Cadastro do paciente e exame")
-            patient_name = st.text_input("Nome do Paciente")
-            sexo = st.selectbox("Sexo", ["", "Feminino", "Masculino"])
+            patient_name = st.text_input("Nome do Paciente", key="new_patient_name_input")
+            existing_candidates = search_patients_by_name(patient_name) if patient_name.strip() else []
+            normalized_input = " ".join(patient_name.strip().lower().split())
+            prefix_matches = [p for p in existing_candidates if p.normalized_name.startswith(normalized_input)] if normalized_input else []
+            if prefix_matches:
+                labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in prefix_matches]
+                chosen_label = st.selectbox("Pacientes já cadastrados (refino automático)", ["-- selecionar --"] + labels, key="existing_patient_quickpick")
+                if chosen_label != "-- selecionar --":
+                    chosen = prefix_matches[labels.index(chosen_label)]
+                    st.session_state["selected_existing_patient_id"] = chosen.id
+                    st.session_state["new_patient_name_input"] = chosen.name
+                    st.session_state["birth_input"] = _to_br_date(chosen.birth_date)
+                    st.session_state["current_patient_sexo"] = chosen.sexo
+                    st.session_state["current_patient_convenio"] = chosen.convenio
+                    patient_name = chosen.name
+            sexo_options = ["", "Feminino", "Masculino"]
+            sexo_default = st.session_state.get("current_patient_sexo", "")
+            sexo_index = sexo_options.index(sexo_default) if sexo_default in sexo_options else 0
+            sexo = st.selectbox("Sexo", sexo_options, index=sexo_index)
             birth_text = st.text_input(
                 "Data de Nascimento (DD/MM/AAAA)",
                 key="birth_input",
@@ -832,9 +837,15 @@ def render_app() -> None:
                     st.session_state["draft_doctor_name"] = medico
                     st.session_state["draft_exam_date"] = data_exame_dt
                     st.session_state["draft_exam_time"] = hora_exame_dt
-                    st.session_state["current_exam_id"] = None
+                    exam = create_exam(
+                        patient_id=patient.id,
+                        doctor_name=medico,
+                        exam_date_iso=_to_iso_date(data_exame_dt),
+                        exam_time_hhmm=hora_exame_dt.strftime("%H:%M"),
+                    )
+                    st.session_state["current_exam_id"] = exam.id
                     st.session_state["selected_gallery_paths"] = []
-                    st.success(f"Paciente {patient.name} pronto para gerar novo exame/laudo.")
+                    st.success(f"Paciente {patient.name} pronto. Exame ativo #{exam.id} criado para autosave de mídias.")
 
         else:
             st.markdown("### Buscar paciente")
@@ -863,16 +874,22 @@ def render_app() -> None:
 
                 c_open, c_delete = st.columns(2)
                 if c_open.button("Abrir exame"):
-                    st.session_state["current_exam_id"] = selected_exam["id"]
+                    new_exam = create_exam(
+                        patient_id=selected_exam["patient_id"],
+                        doctor_name=selected_exam["doctor_name"],
+                        exam_date_iso=_to_iso_date(date.today()),
+                        exam_time_hhmm=datetime.now().strftime("%H:%M"),
+                    )
+                    st.session_state["current_exam_id"] = new_exam.id
                     st.session_state["current_patient_id"] = selected_exam["patient_id"]
                     st.session_state["current_patient_name"] = selected_exam["patient_name"]
                     st.session_state["current_patient_birth_date"] = selected_exam["birth_date"]
                     st.session_state["current_patient_sexo"] = selected_exam["sexo"]
                     st.session_state["current_patient_convenio"] = selected_exam["convenio"]
                     st.session_state["draft_doctor_name"] = selected_exam["doctor_name"]
-                    st.session_state["draft_exam_date"] = datetime.strptime(selected_exam["exam_date"], "%Y-%m-%d").date()
-                    st.session_state["draft_exam_time"] = datetime.strptime(selected_exam["exam_time"], "%H:%M").time()
-                    st.session_state["selected_gallery_paths"] = [str(p) for p in list_captured_images(exam_id=selected_exam["id"])]
+                    st.session_state["draft_exam_date"] = date.today()
+                    st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
+                    st.session_state["selected_gallery_paths"] = []
                     report_data = get_exam_report(selected_exam["id"])
                     if report_data:
                         loaded = ReportData(
@@ -889,7 +906,7 @@ def render_app() -> None:
                         st.session_state["report"] = loaded
                         st.session_state["last_auto_sections"] = dict(loaded.secoes)
                         st.session_state["transcript_input"] = report_data.get("transcript", "")
-                    st.success(f"Exame #{selected_exam['id']} carregado.")
+                    st.success(f"Exame #{selected_exam['id']} carregado como base para novo laudo (novo exame ativo #{new_exam.id}).")
                 if c_delete.button("Excluir exame (2 cliques)"):
                     pending = st.session_state.get("delete_exam_pending")
                     current = selected_exam["id"]
@@ -950,7 +967,7 @@ def render_app() -> None:
                 f"Paciente ativo: {st.session_state.get('current_patient_name')} "
                 f"(nasc. {_to_br_date(st.session_state.get('current_patient_birth_date')) if st.session_state.get('current_patient_birth_date') else '-'})"
             )
-            st.caption("Gere e revise o laudo; depois clique em 'Salvar exame' para persistir um novo exame desse paciente.")
+            st.caption("Gere e revise o laudo; depois clique em 'Salvar exame' para persistir o exame ativo sem perda de mídia.")
         else:
             st.warning("Nenhum paciente/exame ativo. Cadastre paciente ou abra exame para continuar.")
 
@@ -1061,17 +1078,32 @@ def render_app() -> None:
                 mime="application/pdf",
             )
             if st.button("Salvar exame", disabled=not bool(st.session_state.get("current_patient_id"))):
-                exam = create_exam(
-                    patient_id=int(st.session_state["current_patient_id"]),
-                    doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
-                    exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
-                    exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
-                )
-                moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam.id)
+                active_exam_id = st.session_state.get("current_exam_id")
+                if active_exam_id:
+                    update_exam(
+                        exam_id=int(active_exam_id),
+                        doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
+                        exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
+                        exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                    )
+                    exam = get_exam(int(active_exam_id))
+                    if not exam:
+                        st.error("Não foi possível localizar o exame ativo para salvar.")
+                        st.stop()
+                    exam_id = int(active_exam_id)
+                else:
+                    created = create_exam(
+                        patient_id=int(st.session_state["current_patient_id"]),
+                        doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
+                        exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
+                        exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                    )
+                    exam_id = created.id
+                moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam_id)
                 for image_path in moved_images:
-                    add_exam_image(exam.id, str(image_path), get_image_caption(image_path, exam_id=exam.id))
+                    add_exam_image(exam_id, str(image_path), get_image_caption(image_path, exam_id=exam_id))
                 draft_video_dir = Path("captured_videos") / "unassigned"
-                exam_video_dir = Path("captured_videos") / f"exam_{exam.id}"
+                exam_video_dir = Path("captured_videos") / f"exam_{exam_id}"
                 exam_video_dir.mkdir(parents=True, exist_ok=True)
                 if draft_video_dir.exists():
                     for draft_video in sorted(draft_video_dir.glob("*")):
@@ -1081,15 +1113,15 @@ def render_app() -> None:
                         if target.exists():
                             target = exam_video_dir / f"{target.stem}_{datetime.now().strftime('%H%M%S%f')}{target.suffix}"
                         shutil.move(str(draft_video), str(target))
-                        add_exam_video(exam.id, str(target))
+                        add_exam_video(exam_id, str(target))
                 save_exam_report(
-                    exam_id=exam.id,
+                    exam_id=exam_id,
                     transcript=st.session_state.get("transcript_input", ""),
                     sections=report.secoes,
                 )
-                st.session_state["current_exam_id"] = exam.id
+                st.session_state["current_exam_id"] = exam_id
                 st.session_state["selected_gallery_paths"] = [str(p) for p in moved_images]
-                st.success(f"Exame #{exam.id} salvo com sucesso para o paciente {report.paciente}.")
+                st.success(f"Exame #{exam_id} salvo com sucesso para o paciente {report.paciente}.")
 
 
 if __name__ == "__main__":
