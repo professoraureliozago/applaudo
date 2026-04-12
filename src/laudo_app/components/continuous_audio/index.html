@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body { margin: 0; font-family: sans-serif; background: #f8f9fa; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      button, select { padding: 7px 10px; border: 0; border-radius: 6px; }
+      button { cursor: pointer; }
+      .start { background: #0a7; color: #fff; }
+      .stop { background: #c33; color: #fff; }
+      .muted { background: #666; color: #fff; }
+      .status { margin-top: 8px; font-size: 12px; color: #333; }
+      .warn { color: #a00; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <select id="device"></select>
+      <button id="refresh" class="muted">Reconectar</button>
+      <button id="start" class="start">Iniciar contínuo</button>
+      <button id="stop" class="stop" disabled>Pausar contínuo</button>
+    </div>
+    <div id="status" class="status">Aguardando inicialização do microfone…</div>
+
+    <script>
+      const deviceSel = document.getElementById('device')
+      const refreshBtn = document.getElementById('refresh')
+      const startBtn = document.getElementById('start')
+      const stopBtn = document.getElementById('stop')
+      const statusEl = document.getElementById('status')
+
+      let stream = null
+      let recorder = null
+      let chunks = []
+      let audioCtx = null
+      let analyser = null
+      let source = null
+      let tick = null
+      let startedAt = 0
+      let lastVoiceAt = 0
+      let isRunning = false
+      let currentDeviceId = ''
+      let recognition = null
+
+      let chunkMs = 3500
+      let silenceMs = 1100
+      let vadThreshold = 0.018
+
+      function post(type, payload = {}) {
+        window.parent.postMessage({ isStreamlitMessage: true, type, ...payload }, '*')
+      }
+      function setReady() { post('streamlit:componentReady', { apiVersion: 1 }) }
+      function setHeight(h) { post('streamlit:setFrameHeight', { height: h }) }
+      function setValue(v) { post('streamlit:setComponentValue', { value: v }) }
+
+      function setStatus(msg, isWarn = false) {
+        statusEl.textContent = msg
+        statusEl.className = isWarn ? 'status warn' : 'status'
+      }
+
+      async function listDevices() {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const mics = devices.filter(d => d.kind === 'audioinput')
+        deviceSel.innerHTML = ''
+        mics.forEach((d, idx) => {
+          const opt = document.createElement('option')
+          opt.value = d.deviceId
+          opt.textContent = d.label || `Microfone ${idx + 1}`
+          deviceSel.appendChild(opt)
+        })
+        if (currentDeviceId) deviceSel.value = currentDeviceId
+      }
+
+      async function ensureStream(force = false) {
+        if (stream && !force) return
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop())
+          stream = null
+        }
+        const constraints = { audio: currentDeviceId ? { deviceId: { exact: currentDeviceId } } : true }
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+        currentDeviceId = stream.getAudioTracks()[0]?.getSettings()?.deviceId || currentDeviceId
+
+        if (audioCtx) {
+          try { await audioCtx.close() } catch (_) {}
+        }
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+        source = audioCtx.createMediaStreamSource(stream)
+        analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 1024
+        source.connect(analyser)
+        await listDevices()
+        setStatus('Microfone pronto para captura contínua.')
+      }
+
+      function level() {
+        if (!analyser) return 0
+        const data = new Uint8Array(analyser.fftSize)
+        analyser.getByteTimeDomainData(data)
+        let sum = 0
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128
+          sum += v * v
+        }
+        return Math.sqrt(sum / data.length)
+      }
+
+      function stopRecorder() {
+        if (recorder && recorder.state === 'recording') recorder.stop()
+      }
+
+      function startRecorder() {
+        chunks = []
+        recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunks.push(e.data)
+        }
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'audio/webm' })
+          if (blob.size < 1024) return
+          blob.arrayBuffer()
+            .then((buffer) => audioCtx.decodeAudioData(buffer))
+            .then((audioBuffer) => {
+              const wavDataUrl = audioBufferToWavDataUrl(audioBuffer)
+              setValue({ mime_type: 'audio/wav', data_url: wavDataUrl, timestamp: Date.now() })
+            })
+            .catch(() => {
+              const reader = new FileReader()
+              reader.onloadend = () => {
+                setValue({ mime_type: 'audio/webm', data_url: reader.result, timestamp: Date.now() })
+              }
+              reader.readAsDataURL(blob)
+            })
+        }
+        recorder.start(250)
+        startedAt = Date.now()
+        lastVoiceAt = Date.now()
+      }
+
+      function tickVAD() {
+        if (!isRunning) return
+        const now = Date.now()
+        const l = level()
+        if (l >= vadThreshold) lastVoiceAt = now
+        const duration = now - startedAt
+        const silence = now - lastVoiceAt
+        if (duration >= chunkMs || silence >= silenceMs) {
+          stopRecorder()
+          startRecorder()
+        }
+      }
+
+      function setupSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+        if (!SpeechRecognition) return
+        if (recognition) return
+        recognition = new SpeechRecognition()
+        recognition.lang = 'pt-BR'
+        recognition.interimResults = false
+        recognition.continuous = true
+        recognition.onresult = (event) => {
+          const result = event.results?.[event.results.length - 1]
+          if (!result || !result[0]) return
+          const text = String(result[0].transcript || '').trim()
+          if (!text) return
+          setValue({ transcript_text: text, timestamp: Date.now(), mime_type: 'text/plain' })
+        }
+        recognition.onerror = () => {}
+        recognition.onend = () => {
+          if (isRunning) {
+            try { recognition.start() } catch (_) {}
+          }
+        }
+      }
+
+      async function startContinuous() {
+        try {
+          await ensureStream()
+          if (audioCtx?.state === 'suspended') await audioCtx.resume()
+          isRunning = true
+          startBtn.disabled = true
+          stopBtn.disabled = false
+          setStatus('Captura contínua ativa (VAD).')
+          startRecorder()
+          setupSpeechRecognition()
+          if (recognition) {
+            try { recognition.start() } catch (_) {}
+          }
+          if (tick) clearInterval(tick)
+          tick = setInterval(tickVAD, 200)
+        } catch (err) {
+          setStatus(`Falha ao iniciar microfone: ${err?.message || err}`, true)
+        }
+      }
+
+      function stopContinuous() {
+        isRunning = false
+        startBtn.disabled = false
+        stopBtn.disabled = true
+        if (tick) clearInterval(tick)
+        stopRecorder()
+        if (recognition) {
+          try { recognition.stop() } catch (_) {}
+        }
+        setStatus('Captura contínua pausada.')
+      }
+
+      function applyArgs(args) {
+        chunkMs = Number(args.chunk_ms || 3500)
+        silenceMs = Number(args.silence_ms || 1100)
+        vadThreshold = Number(args.vad_threshold || 0.018)
+      }
+
+      function audioBufferToWavDataUrl(audioBuffer) {
+        const numChannels = audioBuffer.numberOfChannels
+        const sampleRate = audioBuffer.sampleRate
+        const samples = audioBuffer.length
+        const bytesPerSample = 2
+        const dataSize = samples * numChannels * bytesPerSample
+        const buffer = new ArrayBuffer(44 + dataSize)
+        const view = new DataView(buffer)
+
+        function writeString(offset, text) {
+          for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
+        }
+
+        writeString(0, 'RIFF')
+        view.setUint32(4, 36 + dataSize, true)
+        writeString(8, 'WAVE')
+        writeString(12, 'fmt ')
+        view.setUint32(16, 16, true)
+        view.setUint16(20, 1, true)
+        view.setUint16(22, numChannels, true)
+        view.setUint32(24, sampleRate, true)
+        view.setUint32(28, sampleRate * numChannels * bytesPerSample, true)
+        view.setUint16(32, numChannels * bytesPerSample, true)
+        view.setUint16(34, bytesPerSample * 8, true)
+        writeString(36, 'data')
+        view.setUint32(40, dataSize, true)
+
+        let offset = 44
+        const channels = []
+        for (let ch = 0; ch < numChannels; ch++) channels.push(audioBuffer.getChannelData(ch))
+        for (let i = 0; i < samples; i++) {
+          for (let ch = 0; ch < numChannels; ch++) {
+            const s = Math.max(-1, Math.min(1, channels[ch][i]))
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+            offset += 2
+          }
+        }
+        const bytes = new Uint8Array(buffer)
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+        return `data:audio/wav;base64,${btoa(binary)}`
+      }
+
+      window.addEventListener('message', async (event) => {
+        const msg = event.data
+        if (!msg || msg.type !== 'streamlit:render') return
+        applyArgs(msg.args || {})
+        setHeight(110)
+        try {
+          await ensureStream(false)
+        } catch (err) {
+          setStatus(`Permita acesso ao microfone para usar o modo contínuo: ${err?.message || err}`, true)
+        }
+      })
+
+      refreshBtn.addEventListener('click', async () => {
+        currentDeviceId = deviceSel.value || currentDeviceId
+        try {
+          await ensureStream(true)
+          setStatus('Reconexão concluída.')
+        } catch (err) {
+          setStatus(`Falha na reconexão: ${err?.message || err}`, true)
+        }
+      })
+      deviceSel.addEventListener('change', async () => {
+        currentDeviceId = deviceSel.value || ''
+        await ensureStream(true)
+        setStatus('Dispositivo de microfone alterado.')
+      })
+      startBtn.addEventListener('click', startContinuous)
+      stopBtn.addEventListener('click', stopContinuous)
+
+      setReady()
+      setHeight(110)
+    </script>
+  </body>
+</html>
