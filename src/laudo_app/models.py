@@ -26,11 +26,13 @@ DEFAULT_SECTIONS = [
 class ReportData:
     paciente: str = ""
     medico: str = ""
+    medico_executante: str = ""
     sexo: str = ""
     idade: str = ""
     data_exame: str = ""
     hora_exame: str = ""
     convenio: str = ""
+    footer_text: str = "Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369"
     secoes: Dict[str, str] = field(default_factory=dict)
     image_bytes: List[bytes] = field(default_factory=list)
     image_captions: List[str] = field(default_factory=list)

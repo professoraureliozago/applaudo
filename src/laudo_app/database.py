@@ -31,6 +31,7 @@ class Exam:
     exam_date: str
     exam_time: str
     convenio: str
+    executante: str
     created_at: str
     updated_at: str
 
@@ -64,6 +65,7 @@ def ensure_db() -> None:
                 exam_date TEXT NOT NULL,
                 exam_time TEXT NOT NULL,
                 convenio TEXT DEFAULT '',
+                executante TEXT DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
@@ -75,6 +77,11 @@ def ensure_db() -> None:
 
             CREATE TABLE IF NOT EXISTS convenio_suggestions (
                 name TEXT PRIMARY KEY
+            );
+
+            CREATE TABLE IF NOT EXISTS executante_profiles (
+                name TEXT PRIMARY KEY,
+                footer_text TEXT DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS exam_images (
@@ -107,6 +114,8 @@ def ensure_db() -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(exams)").fetchall()}
         if "convenio" not in cols:
             conn.execute("ALTER TABLE exams ADD COLUMN convenio TEXT DEFAULT ''")
+        if "executante" not in cols:
+            conn.execute("ALTER TABLE exams ADD COLUMN executante TEXT DEFAULT ''")
 
 
 @contextmanager
@@ -172,33 +181,47 @@ def create_or_get_patient(name: str, sexo: str, birth_date_iso: str) -> tuple[Pa
     return Patient(**dict(row)), True
 
 
-def create_exam(patient_id: int, doctor_name: str, exam_date_iso: str, exam_time_hhmm: str, convenio: str = "") -> Exam:
+def create_exam(
+    patient_id: int,
+    doctor_name: str,
+    exam_date_iso: str,
+    exam_time_hhmm: str,
+    convenio: str = "",
+    executante: str = "",
+) -> Exam:
     now = _now_iso()
     with _connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO exams(patient_id, doctor_name, exam_date, exam_time, convenio, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO exams(patient_id, doctor_name, exam_date, exam_time, convenio, executante, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (patient_id, doctor_name.strip(), exam_date_iso, exam_time_hhmm, convenio.strip(), now, now),
+            (patient_id, doctor_name.strip(), exam_date_iso, exam_time_hhmm, convenio.strip(), executante.strip(), now, now),
         )
         exam_id = cur.lastrowid
         row = conn.execute("SELECT * FROM exams WHERE id = ?", (exam_id,)).fetchone()
     return Exam(**dict(row))
 
 
-def update_exam(exam_id: int, doctor_name: str, exam_date_iso: str, exam_time_hhmm: str, convenio: str = "") -> None:
+def update_exam(
+    exam_id: int,
+    doctor_name: str,
+    exam_date_iso: str,
+    exam_time_hhmm: str,
+    convenio: str = "",
+    executante: str = "",
+) -> None:
     with _connect() as conn:
         conn.execute(
-            "UPDATE exams SET doctor_name=?, exam_date=?, exam_time=?, convenio=?, updated_at=? WHERE id=?",
-            (doctor_name.strip(), exam_date_iso, exam_time_hhmm, convenio.strip(), _now_iso(), exam_id),
+            "UPDATE exams SET doctor_name=?, exam_date=?, exam_time=?, convenio=?, executante=?, updated_at=? WHERE id=?",
+            (doctor_name.strip(), exam_date_iso, exam_time_hhmm, convenio.strip(), executante.strip(), _now_iso(), exam_id),
         )
 
 
 def list_exams(patient_id: int | None = None) -> list[dict]:
     query = (
         """
-        SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.convenio, e.created_at,
+        SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.convenio, e.executante, e.created_at,
                p.name AS patient_name, p.birth_date, p.sexo
         FROM exams e
         JOIN patients p ON p.id = e.patient_id
@@ -219,7 +242,7 @@ def get_exam(exam_id: int) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.convenio,
+            SELECT e.id, e.patient_id, e.doctor_name, e.exam_date, e.exam_time, e.convenio, e.executante,
                    p.name AS patient_name, p.birth_date, p.sexo
             FROM exams e
             JOIN patients p ON p.id = e.patient_id
@@ -289,6 +312,34 @@ def add_convenio_suggestion(name: str) -> None:
         return
     with _connect() as conn:
         conn.execute("INSERT OR IGNORE INTO convenio_suggestions(name) VALUES (?)", (name.strip(),))
+
+
+def list_executante_names() -> list[str]:
+    with _connect() as conn:
+        exam_rows = conn.execute(
+            "SELECT DISTINCT executante FROM exams WHERE executante IS NOT NULL AND TRIM(executante) <> '' ORDER BY executante"
+        ).fetchall()
+        profile_rows = conn.execute("SELECT name FROM executante_profiles ORDER BY name").fetchall()
+    names = {r["executante"] for r in exam_rows} | {r["name"] for r in profile_rows}
+    return sorted(n for n in names if n.strip())
+
+
+def upsert_executante_profile(name: str, footer_text: str) -> None:
+    if not name.strip():
+        return
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO executante_profiles(name, footer_text) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET footer_text=excluded.footer_text",
+            (name.strip(), footer_text.strip()),
+        )
+
+
+def get_executante_footer(name: str) -> str:
+    if not name.strip():
+        return ""
+    with _connect() as conn:
+        row = conn.execute("SELECT footer_text FROM executante_profiles WHERE name = ?", (name.strip(),)).fetchone()
+    return row["footer_text"] if row else ""
 
 
 def save_exam_report(exam_id: int, transcript: str, sections: dict[str, str]) -> None:

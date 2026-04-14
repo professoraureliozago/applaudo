@@ -50,23 +50,10 @@ def _build_image_panel(image_bytes: list[bytes], captions: list[str], body_style
             caption = captions[i] if i < len(captions) and captions[i] else f"imagem {i + 1}"
             panel.append(Paragraph(f"<i>{caption}</i>", body_style))
         else:
-            placeholder = Table(
-                [[Paragraph(f"Imagem {i + 1}", body_style)]],
-                colWidths=[50 * mm],
-                rowHeights=[40 * mm],
-            )
-            placeholder.setStyle(
-                TableStyle(
-                    [
-                        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("TEXTCOLOR", (0, 0), (-1, -1), colors.grey),
-                    ]
-                )
-            )
+            placeholder = Table([[""]], colWidths=[50 * mm], rowHeights=[40 * mm])
+            placeholder.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.grey)]))
             panel.append(placeholder)
-            panel.append(Paragraph("<i>sem legenda</i>", body_style))
+            panel.append(Paragraph("", body_style))
         panel.append(Spacer(1, 2 * mm))
 
     return panel
@@ -86,40 +73,16 @@ def generate_pdf(report: ReportData) -> bytes:
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        topMargin=12 * mm,
-        bottomMargin=10 * mm,
+        topMargin=26 * mm,
+        bottomMargin=16 * mm,
         leftMargin=12 * mm,
         rightMargin=12 * mm,
     )
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "ClinicTitle",
-        parent=styles["Title"],
-        alignment=1,
-        textColor=colors.HexColor("#d26f2a"),
-        fontSize=22,
-        leading=24,
-    )
-    subtitle_style = ParagraphStyle(
-        "Subtitle",
-        parent=styles["Heading3"],
-        alignment=1,
-        textColor=colors.HexColor("#d26f2a"),
-        fontSize=13,
-    )
     laudo_title_style = ParagraphStyle("LaudoTitle", parent=styles["Heading3"], alignment=1, fontSize=12)
     section_style = ParagraphStyle("Section", parent=styles["Heading4"], fontSize=10.5, leading=12, spaceAfter=1)
     body_style = ParagraphStyle("Body", parent=styles["Normal"], fontSize=9.5, leading=12)
-    footer_style = ParagraphStyle("Footer", parent=styles["Normal"], alignment=1, fontSize=9, textColor=colors.HexColor("#d26f2a"))
-
-    story = []
-
-    story.append(Paragraph("Videocolonoscopia", title_style))
-    story.append(Paragraph("Dr. Aurélio Fabiano Ribeiro Zago", subtitle_style))
-    story.append(Spacer(1, 3 * mm))
-    story.append(Paragraph("<u><b>Laudo de Videocolonoscopia</b></u>", laudo_title_style))
-    story.append(Spacer(1, 3 * mm))
 
     header_data = [
         [
@@ -129,18 +92,37 @@ def generate_pdf(report: ReportData) -> bytes:
         ],
         [
             Paragraph(f"<b>Médico Solicitante:</b> {report.medico or '-'}", body_style),
-            Paragraph(f"<b>Data:</b> {report.data_exame or '-'}", body_style),
-            Paragraph(f"<b>Hora:</b> {report.hora_exame or '-'}", body_style),
+            Paragraph(f"<b>Médico Executante:</b> {report.medico_executante or '-'}", body_style),
+            Paragraph("", body_style),
         ],
         [
+            Paragraph(f"<b>Data:</b> {report.data_exame or '-'}", body_style),
+            Paragraph(f"<b>Hora:</b> {report.hora_exame or '-'}", body_style),
             Paragraph(f"<b>Convênio:</b> {report.convenio or '-'}", body_style),
-            Paragraph("", body_style),
-            Paragraph("", body_style),
         ],
     ]
 
-    header_table = Table(header_data, colWidths=[104 * mm, 34 * mm, 28 * mm])
+    header_table = Table(header_data, colWidths=[86 * mm, 58 * mm, 22 * mm])
     header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+
+    def draw_header_footer(canvas, _doc):
+        canvas.saveState()
+        y_top = A4[1] - 10 * mm
+        canvas.setFont("Helvetica-Bold", 14)
+        canvas.setFillColor(colors.HexColor("#d26f2a"))
+        canvas.drawCentredString(A4[0] / 2, y_top, "Videocolonoscopia")
+        canvas.setFont("Helvetica", 10)
+        canvas.drawCentredString(A4[0] / 2, y_top - 5.5 * mm, report.medico_executante or "Dr(a).")
+        canvas.line(12 * mm, y_top - 8 * mm, A4[0] - 12 * mm, y_top - 8 * mm)
+        canvas.setFont("Helvetica", 8.5)
+        canvas.setFillColor(colors.HexColor("#d26f2a"))
+        canvas.line(12 * mm, 12 * mm, A4[0] - 12 * mm, 12 * mm)
+        canvas.drawCentredString(A4[0] / 2, 8 * mm, report.footer_text or "")
+        canvas.restoreState()
+
+    story = []
+    story.append(Paragraph("<u><b>Laudo de Videocolonoscopia</b></u>", laudo_title_style))
+    story.append(Spacer(1, 3 * mm))
     story.append(header_table)
     story.append(Spacer(1, 2 * mm))
 
@@ -171,12 +153,5 @@ def generate_pdf(report: ReportData) -> bytes:
         if idx < len(image_chunks) - 1:
             story.append(PageBreak())
 
-    story.append(Spacer(1, 3 * mm))
-    footer_line = Table([[" "]], colWidths=[184 * mm], rowHeights=[0.4 * mm])
-    footer_line.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), colors.black)]))
-    story.append(footer_line)
-    story.append(Spacer(1, 1.5 * mm))
-    story.append(Paragraph("Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369", footer_style))
-
-    doc.build(story)
+    doc.build(story, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
     return buffer.getvalue()

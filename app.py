@@ -28,10 +28,13 @@ from src.laudo_app.database import (
     get_exam,
     get_exam_report,
     list_convenios,
+    list_executante_names,
     list_doctor_names,
     list_exams,
     save_exam_report,
     search_patients_by_name,
+    get_executante_footer,
+    upsert_executante_profile,
     update_exam,
 )
 from src.laudo_app.image_store import (
@@ -166,6 +169,34 @@ def _try_convert_video_to_mp4(input_path: Path) -> Path:
         return input_path
     input_path.unlink(missing_ok=True)
     return output_path
+
+
+def _clone_exam_media(source_exam_id: int, target_exam_id: int) -> list[str]:
+    copied_selected: list[str] = []
+    target_image_dir = Path("captured_images") / f"exam_{target_exam_id}"
+    target_image_dir.mkdir(parents=True, exist_ok=True)
+    for src_img in list_captured_images(exam_id=source_exam_id):
+        target = target_image_dir / src_img.name
+        if target.exists():
+            target = target_image_dir / f"{target.stem}_{datetime.now().strftime('%H%M%S%f')}{target.suffix}"
+        shutil.copy2(src_img, target)
+        caption = get_image_caption(src_img, exam_id=source_exam_id)
+        add_exam_image(target_exam_id, str(target), caption)
+        copied_selected.append(str(target))
+
+    source_video_dir = Path("captured_videos") / f"exam_{source_exam_id}"
+    target_video_dir = Path("captured_videos") / f"exam_{target_exam_id}"
+    target_video_dir.mkdir(parents=True, exist_ok=True)
+    if source_video_dir.exists():
+        for src_video in sorted(source_video_dir.glob("*")):
+            if src_video.suffix.lower() not in {".mp4", ".webm", ".mov"}:
+                continue
+            target = target_video_dir / src_video.name
+            if target.exists():
+                target = target_video_dir / f"{target.stem}_{datetime.now().strftime('%H%M%S%f')}{target.suffix}"
+            shutil.copy2(src_video, target)
+            add_exam_video(target_exam_id, str(target))
+    return copied_selected
 
 
 def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, input_text: str, current_text: str) -> str:
@@ -696,6 +727,8 @@ def render_app() -> None:
     st.session_state.setdefault("current_patient_sexo", "")
     st.session_state.setdefault("current_patient_convenio", "")
     st.session_state.setdefault("draft_doctor_name", "Dr(a).")
+    st.session_state.setdefault("draft_executante_name", "Dr(a).")
+    st.session_state.setdefault("draft_footer_text", "Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369")
     st.session_state.setdefault("draft_exam_date", date.today())
     st.session_state.setdefault("draft_exam_time", datetime.now().time().replace(second=0, microsecond=0))
     st.session_state.setdefault("draft_birth_date_text", "")
@@ -743,6 +776,8 @@ def render_app() -> None:
             st.session_state["last_auto_sections"] = {}
             st.session_state["transcript_input"] = ""
             st.session_state["draft_doctor_name"] = "Dr(a)."
+            st.session_state["draft_executante_name"] = "Dr(a)."
+            st.session_state["draft_footer_text"] = "Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369"
             st.session_state["draft_exam_date"] = date.today()
             st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
             st.session_state["draft_birth_date_text"] = ""
@@ -807,6 +842,39 @@ def render_app() -> None:
                     add_doctor_suggestion(medico_novo.strip())
                     st.success("Novo médico solicitante cadastrado nas sugestões.")
 
+            executante_options = ["Dr(a)."] + [d for d in list_executante_names() if d != "Dr(a)."]
+            executante_default = st.session_state.get("draft_executante_name", "Dr(a).")
+            if executante_default not in executante_options:
+                executante_options.append(executante_default)
+            executante_sugestao = st.selectbox(
+                "Médico Executante (com sugestões)",
+                options=executante_options,
+                index=executante_options.index(executante_default),
+            )
+            executante_novo = st.text_input("Ou digite novo médico executante (opcional)")
+            executante = executante_novo.strip() or executante_sugestao
+            footer_text = st.session_state.get("draft_footer_text", "")
+            if executante_novo.strip() and executante_novo.strip() not in executante_options:
+                st.caption("Novo médico executante: preencha os dados do rodapé antes de cadastrar.")
+                footer_text = st.text_area(
+                    "Dados do rodapé (endereço, telefones etc.)",
+                    value=footer_text,
+                    key="executante_footer_input",
+                    height=80,
+                )
+                if st.button("Cadastrar médico executante"):
+                    if not footer_text.strip():
+                        st.warning("Informe os dados do rodapé para cadastrar o médico executante.")
+                    else:
+                        upsert_executante_profile(executante_novo.strip(), footer_text.strip())
+                        st.session_state["draft_footer_text"] = footer_text.strip()
+                        st.success("Médico executante cadastrado com dados de rodapé.")
+            else:
+                st.session_state["draft_footer_text"] = get_executante_footer(executante) or st.session_state.get(
+                    "draft_footer_text",
+                    "",
+                )
+
             convenio_options = [""] + list_convenios()
             convenio_default = st.session_state.get("current_patient_convenio", "")
             if convenio_default and convenio_default not in convenio_options:
@@ -853,6 +921,7 @@ def render_app() -> None:
                     st.session_state["current_patient_sexo"] = patient.sexo
                     st.session_state["current_patient_convenio"] = convenio
                     st.session_state["draft_doctor_name"] = medico
+                    st.session_state["draft_executante_name"] = executante
                     st.session_state["draft_exam_date"] = data_exame_dt
                     st.session_state["draft_exam_time"] = hora_exame_dt
                     exam = create_exam(
@@ -861,6 +930,7 @@ def render_app() -> None:
                         exam_date_iso=_to_iso_date(data_exame_dt),
                         exam_time_hhmm=hora_exame_dt.strftime("%H:%M"),
                         convenio=convenio,
+                        executante=executante,
                     )
                     st.session_state["current_exam_id"] = exam.id
                     st.session_state["selected_gallery_paths"] = []
@@ -899,6 +969,7 @@ def render_app() -> None:
                         exam_date_iso=_to_iso_date(date.today()),
                         exam_time_hhmm=datetime.now().strftime("%H:%M"),
                         convenio=selected_exam.get("convenio", ""),
+                        executante=selected_exam.get("executante", ""),
                     )
                     st.session_state["current_exam_id"] = new_exam.id
                     st.session_state["current_patient_id"] = selected_exam["patient_id"]
@@ -907,19 +978,23 @@ def render_app() -> None:
                     st.session_state["current_patient_sexo"] = selected_exam["sexo"]
                     st.session_state["current_patient_convenio"] = selected_exam["convenio"]
                     st.session_state["draft_doctor_name"] = selected_exam["doctor_name"]
+                    st.session_state["draft_executante_name"] = selected_exam.get("executante", "Dr(a).")
+                    st.session_state["draft_footer_text"] = get_executante_footer(selected_exam.get("executante", ""))
                     st.session_state["draft_exam_date"] = date.today()
                     st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
-                    st.session_state["selected_gallery_paths"] = []
+                    st.session_state["selected_gallery_paths"] = _clone_exam_media(selected_exam["id"], new_exam.id)
                     report_data = get_exam_report(selected_exam["id"])
                     if report_data:
                         loaded = ReportData(
                             paciente=selected_exam["patient_name"],
                             medico=selected_exam["doctor_name"],
+                            medico_executante=selected_exam.get("executante", ""),
                             sexo=selected_exam["sexo"],
                             idade=str(max(calculate_age(selected_exam["birth_date"]), 0)),
                             data_exame=_to_br_date(selected_exam["exam_date"]),
                             hora_exame=selected_exam["exam_time"],
                             convenio=selected_exam["convenio"],
+                            footer_text=get_executante_footer(selected_exam.get("executante", "")),
                         )
                         loaded.secoes = report_data.get("sections", {})
                         loaded.ensure_sections()
@@ -962,6 +1037,13 @@ def render_app() -> None:
         with st.expander("Editar dados do exame ativo"):
             new_doctor = st.text_input("Médico solicitante (edição)", value=current_exam["doctor_name"], key="edit_doctor_name")
             new_convenio = st.text_input("Convênio (edição)", value=current_exam.get("convenio", ""), key="edit_convenio")
+            new_executante = st.text_input("Médico executante (edição)", value=current_exam.get("executante", ""), key="edit_executante")
+            footer_edit = st.text_area(
+                "Dados do rodapé do médico executante",
+                value=get_executante_footer(new_executante) or st.session_state.get("draft_footer_text", ""),
+                key="edit_executante_footer",
+                height=80,
+            )
             new_exam_date = st.date_input(
                 "Data do exame (edição)",
                 value=datetime.strptime(current_exam["exam_date"], "%Y-%m-%d").date(),
@@ -980,8 +1062,12 @@ def render_app() -> None:
                     exam_date_iso=_to_iso_date(new_exam_date),
                     exam_time_hhmm=new_exam_time.strftime("%H:%M"),
                     convenio=new_convenio,
+                    executante=new_executante,
                 )
                 st.session_state["current_patient_convenio"] = new_convenio
+                st.session_state["draft_executante_name"] = new_executante
+                st.session_state["draft_footer_text"] = footer_edit
+                upsert_executante_profile(new_executante, footer_edit)
                 st.success("Dados do exame atualizados.")
                 st.rerun()
     else:
@@ -1026,6 +1112,8 @@ def render_app() -> None:
             medico_nome = current_exam["doctor_name"] if current_exam else st.session_state.get("draft_doctor_name", "Dr(a).")
             sexo_nome = current_exam["sexo"] if current_exam else st.session_state.get("current_patient_sexo", "")
             convenio_nome = current_exam["convenio"] if current_exam else st.session_state.get("current_patient_convenio", "")
+            executante_nome = current_exam.get("executante", "") if current_exam else st.session_state.get("draft_executante_name", "Dr(a).")
+            footer_text = get_executante_footer(executante_nome) or st.session_state.get("draft_footer_text", "")
             data_exam_iso = current_exam["exam_date"] if current_exam else _to_iso_date(st.session_state.get("draft_exam_date", date.today()))
             hora_exam = current_exam["exam_time"] if current_exam else st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M")
             report = st.session_state.get("report")
@@ -1038,6 +1126,8 @@ def render_app() -> None:
                     data_exame=_to_br_date(data_exam_iso),
                     hora_exame=hora_exam,
                     convenio=convenio_nome,
+                    medico_executante=executante_nome,
+                    footer_text=footer_text,
                     image_bytes=gallery_bytes + [img.getvalue() for img in uploaded_images],
                     image_captions=gallery_captions + manual_captions,
                 )
@@ -1049,6 +1139,8 @@ def render_app() -> None:
                 report.data_exame = _to_br_date(data_exam_iso)
                 report.hora_exame = hora_exam
                 report.convenio = convenio_nome
+                report.medico_executante = executante_nome
+                report.footer_text = footer_text
                 report.image_bytes = gallery_bytes + [img.getvalue() for img in uploaded_images]
                 report.image_captions = gallery_captions + manual_captions
 
@@ -1109,6 +1201,7 @@ def render_app() -> None:
                         exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
                         exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
                         convenio=st.session_state.get("current_patient_convenio", ""),
+                        executante=st.session_state.get("draft_executante_name", report.medico_executante or "Dr(a)."),
                     )
                     exam = get_exam(int(active_exam_id))
                     if not exam:
@@ -1122,6 +1215,7 @@ def render_app() -> None:
                         exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
                         exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
                         convenio=st.session_state.get("current_patient_convenio", ""),
+                        executante=st.session_state.get("draft_executante_name", report.medico_executante or "Dr(a)."),
                     )
                     exam_id = created.id
                 moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam_id)
