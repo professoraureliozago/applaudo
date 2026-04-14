@@ -50,9 +50,7 @@ def _build_image_panel(image_bytes: list[bytes], captions: list[str], body_style
             caption = captions[i] if i < len(captions) and captions[i] else f"imagem {i + 1}"
             panel.append(Paragraph(f"<i>{caption}</i>", body_style))
         else:
-            placeholder = Table([[""]], colWidths=[50 * mm], rowHeights=[40 * mm])
-            placeholder.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.grey)]))
-            panel.append(placeholder)
+            panel.append(Spacer(50 * mm, 40 * mm))
             panel.append(Paragraph("", body_style))
         panel.append(Spacer(1, 2 * mm))
 
@@ -92,13 +90,13 @@ def generate_pdf(report: ReportData) -> bytes:
         ],
         [
             Paragraph(f"<b>Médico Solicitante:</b> {report.medico or '-'}", body_style),
-            Paragraph(f"<b>Médico Executante:</b> {report.medico_executante or '-'}", body_style),
-            Paragraph("", body_style),
-        ],
-        [
             Paragraph(f"<b>Data:</b> {report.data_exame or '-'}", body_style),
             Paragraph(f"<b>Hora:</b> {report.hora_exame or '-'}", body_style),
+        ],
+        [
             Paragraph(f"<b>Convênio:</b> {report.convenio or '-'}", body_style),
+            Paragraph("", body_style),
+            Paragraph("", body_style),
         ],
     ]
 
