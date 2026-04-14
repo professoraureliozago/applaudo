@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -744,6 +745,7 @@ def render_app() -> None:
     st.session_state.setdefault("last_webrtc_capture_ts", 0)
     st.session_state.setdefault("last_continuous_audio_ts", 0)
     st.session_state.setdefault("audio_metrics", {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0})
+    st.session_state.setdefault("pdf_preview_exam_id", None)
     if not st.session_state.get("cleaned_unassigned_once"):
         clear_unassigned_images()
         draft_video_dir = Path("captured_videos") / "unassigned"
@@ -788,6 +790,7 @@ def render_app() -> None:
             st.session_state["last_webrtc_capture_ts"] = 0
             st.session_state["last_continuous_audio_ts"] = 0
             st.session_state["audio_metrics"] = {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0}
+            st.session_state["pdf_preview_exam_id"] = None
             clear_unassigned_images()
             draft_video_dir = Path("captured_videos") / "unassigned"
             if draft_video_dir.exists():
@@ -961,7 +964,7 @@ def render_app() -> None:
                 selected_exam_label = st.selectbox("Exames salvos", exam_labels)
                 selected_exam = exams[exam_labels.index(selected_exam_label)]
 
-                c_open, c_delete = st.columns(2)
+                c_open, c_pdf, c_delete = st.columns(3)
                 if c_open.button("Abrir exame"):
                     new_exam = create_exam(
                         patient_id=selected_exam["patient_id"],
@@ -1002,6 +1005,9 @@ def render_app() -> None:
                         st.session_state["last_auto_sections"] = dict(loaded.secoes)
                         st.session_state["transcript_input"] = report_data.get("transcript", "")
                     st.success(f"Exame #{selected_exam['id']} carregado como base para novo laudo (novo exame ativo #{new_exam.id}).")
+                if c_pdf.button("Abrir PDF"):
+                    st.session_state["pdf_preview_exam_id"] = selected_exam["id"]
+                    st.rerun()
                 if c_delete.button("Excluir exame (2 cliques)"):
                     pending = st.session_state.get("delete_exam_pending")
                     current = selected_exam["id"]
@@ -1079,6 +1085,22 @@ def render_app() -> None:
             st.caption("Gere e revise o laudo; depois clique em 'Salvar exame' para persistir o exame ativo sem perda de mídia.")
         else:
             st.warning("Nenhum paciente/exame ativo. Cadastre paciente ou abra exame para continuar.")
+
+    pdf_preview_exam_id = st.session_state.get("pdf_preview_exam_id")
+    if pdf_preview_exam_id:
+        pdf_path = Path("saved_reports") / f"exam_{pdf_preview_exam_id}.pdf"
+        st.markdown("### PDF salvo do exame")
+        if pdf_path.exists():
+            encoded = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
+            st.markdown(
+                f'<a href="data:application/pdf;base64,{encoded}" target="_blank">Abrir PDF do exame #{pdf_preview_exam_id} em nova aba</a>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning(f"PDF do exame #{pdf_preview_exam_id} ainda não foi salvo.")
+        if st.button("Retornar ao início"):
+            st.session_state["pdf_preview_exam_id"] = None
+            st.rerun()
 
     tab_procedimento, tab_modelos = st.tabs(["Procedimento", "Gerenciar modelos"])
     with tab_modelos:
@@ -1238,8 +1260,12 @@ def render_app() -> None:
                     transcript=st.session_state.get("transcript_input", ""),
                     sections=report.secoes,
                 )
+                reports_dir = Path("saved_reports")
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                (reports_dir / f"exam_{exam_id}.pdf").write_bytes(pdf_data)
                 st.session_state["current_exam_id"] = exam_id
-                st.session_state["selected_gallery_paths"] = [str(p) for p in moved_images]
+                existing_selected = [p for p in st.session_state.get("selected_gallery_paths", []) if Path(p).exists()]
+                st.session_state["selected_gallery_paths"] = sorted(set(existing_selected + [str(p) for p in moved_images]), reverse=True)
                 st.success(f"Exame #{exam_id} salvo com sucesso para o paciente {report.paciente}.")
 
 

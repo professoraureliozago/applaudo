@@ -100,7 +100,7 @@ def generate_pdf(report: ReportData) -> bytes:
         ],
     ]
 
-    header_table = Table(header_data, colWidths=[86 * mm, 58 * mm, 22 * mm])
+    header_table = Table(header_data, colWidths=[92 * mm, 46 * mm, 46 * mm])
     header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
 
     def draw_header_footer(canvas, _doc):
