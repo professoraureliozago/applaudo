@@ -44,3 +44,79 @@ def test_templates_cover_all_default_sections():
 
     for section in DEFAULT_SECTIONS:
         assert section in section_ids
+
+
+def test_explicit_section_prefix_scopes_keywords_to_that_section():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "reto",
+                    "triggers": ["reto"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "sangramento_reto",
+                            "keywords": ["sangramento"],
+                            "text": "Reto com sangramento.",
+                        }
+                    ],
+                },
+                {
+                    "id": "indicacao",
+                    "triggers": ["indicação", "indicacao"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "sangramento_indicacao",
+                            "keywords": ["sangramento"],
+                            "text": "Exame indicado por sangramento.",
+                        }
+                    ],
+                },
+            ]
+        }
+    )
+
+    rendered = engine.render_from_transcript("Reto sangramento.")
+
+    assert rendered["reto"] == "Reto com sangramento."
+    assert rendered["indicacao"] == ""
+
+
+def test_explicit_prefix_supports_same_keyword_in_multiple_sections():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "reto",
+                    "triggers": ["reto"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "sangramento_reto",
+                            "keywords": ["sangramento"],
+                            "text": "Reto com sangramento.",
+                        }
+                    ],
+                },
+                {
+                    "id": "colon_descendente",
+                    "triggers": ["cólon descendente", "colon descendente"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "sangramento_descendente",
+                            "keywords": ["sangramento"],
+                            "text": "Cólon descendente com sangramento.",
+                        }
+                    ],
+                },
+            ]
+        }
+    )
+
+    rendered = engine.render_from_transcript("Reto sangramento. Colon descendente sangramento.")
+
+    assert rendered["reto"] == "Reto com sangramento."
+    assert rendered["colon_descendente"] == "Cólon descendente com sangramento."
