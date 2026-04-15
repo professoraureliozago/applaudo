@@ -1034,6 +1034,31 @@ def render_app() -> None:
         elif selected_preview:
             st.warning("Algumas imagens selecionadas não existem mais. Atualize a seleção na aba Imagens.")
 
+    pdf_preview_exam_id = st.session_state.get("pdf_preview_exam_id")
+    if pdf_preview_exam_id:
+        pdf_path = Path("saved_reports") / f"exam_{pdf_preview_exam_id}.pdf"
+        st.subheader(f"PDF salvo do exame #{pdf_preview_exam_id}")
+        if pdf_path.exists():
+            pdf_bytes = pdf_path.read_bytes()
+            encoded = base64.b64encode(pdf_bytes).decode("ascii")
+            st.download_button(
+                label="Baixar PDF salvo",
+                data=pdf_bytes,
+                file_name=pdf_path.name,
+                mime="application/pdf",
+                use_container_width=False,
+            )
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{encoded}" width="100%" height="900" style="border:1px solid #444;border-radius:8px;"></iframe>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning(f"PDF do exame #{pdf_preview_exam_id} ainda não foi salvo.")
+        if st.button("Retornar ao início", use_container_width=False):
+            st.session_state["pdf_preview_exam_id"] = None
+            st.rerun()
+        return
+
     current_exam = get_exam(st.session_state["current_exam_id"]) if st.session_state.get("current_exam_id") else None
     if current_exam:
         st.success(
@@ -1085,22 +1110,6 @@ def render_app() -> None:
             st.caption("Gere e revise o laudo; depois clique em 'Salvar exame' para persistir o exame ativo sem perda de mídia.")
         else:
             st.warning("Nenhum paciente/exame ativo. Cadastre paciente ou abra exame para continuar.")
-
-    pdf_preview_exam_id = st.session_state.get("pdf_preview_exam_id")
-    if pdf_preview_exam_id:
-        pdf_path = Path("saved_reports") / f"exam_{pdf_preview_exam_id}.pdf"
-        st.markdown("### PDF salvo do exame")
-        if pdf_path.exists():
-            encoded = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
-            st.markdown(
-                f'<a href="data:application/pdf;base64,{encoded}" target="_blank">Abrir PDF do exame #{pdf_preview_exam_id} em nova aba</a>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.warning(f"PDF do exame #{pdf_preview_exam_id} ainda não foi salvo.")
-        if st.button("Retornar ao início"):
-            st.session_state["pdf_preview_exam_id"] = None
-            st.rerun()
 
     tab_procedimento, tab_modelos = st.tabs(["Procedimento", "Gerenciar modelos"])
     with tab_modelos:
@@ -1182,6 +1191,12 @@ def render_app() -> None:
 
         report: ReportData | None = st.session_state.get("report")
         if report:
+            selected_gallery_items_live = load_selected_images_with_captions(
+                st.session_state.get("selected_gallery_paths", []),
+                exam_id=st.session_state.get("current_exam_id"),
+            )
+            report.image_bytes = [b for b, _ in selected_gallery_items_live]
+            report.image_captions = [c for _, c in selected_gallery_items_live]
             st.subheader("Revisão por seção")
             pending_updates = st.session_state.get("pending_section_updates", {})
             if pending_updates:
