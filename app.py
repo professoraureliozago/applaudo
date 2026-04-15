@@ -701,6 +701,24 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
 def render_app() -> None:
     st.set_page_config(page_title="Laudo Colonoscopia por Áudio", layout="wide")
+    st.markdown(
+        """
+        <style>
+        div.stButton > button,
+        div.stFormSubmitButton > button,
+        div.stDownloadButton > button {
+            width: 100%;
+            min-height: 44px;
+            height: 44px;
+            border-radius: 10px;
+            font-weight: 600;
+            white-space: normal;
+            padding: 0.25rem 0.75rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title("Laudo de Colonoscopia (MVP)")
     st.caption("Protótipo: cadastro seguro de paciente/exame -> áudio/transcrição -> revisão -> PDF")
     ensure_db()
@@ -945,16 +963,22 @@ def render_app() -> None:
             patient_id_for_exams: int | None = None
             if patients:
                 labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in patients]
-                chosen_label = st.selectbox("Pacientes encontrados", labels)
-                chosen = patients[labels.index(chosen_label)]
-                patient_id_for_exams = chosen.id
-
-            if search_name.strip():
-                exams = list_exams(patient_id=patient_id_for_exams) if patient_id_for_exams else []
+                chosen_label = st.selectbox(
+                    "Pacientes encontrados",
+                    ["-- selecionar paciente --"] + labels,
+                    key="open_exam_patient_choice",
+                )
+                if chosen_label != "-- selecionar paciente --":
+                    chosen = patients[labels.index(chosen_label)]
+                    patient_id_for_exams = chosen.id
             else:
-                exams = list_exams()
+                st.caption("Digite o nome para buscar pacientes e selecione um deles para carregar os exames.")
+
+            exams = list_exams(patient_id=patient_id_for_exams) if patient_id_for_exams else []
             if not exams:
-                st.info("Nenhum exame salvo encontrado.")
+                st.selectbox("Exames salvos", ["-- selecione um paciente --"], index=0, disabled=True, key="empty_saved_exams")
+                if patient_id_for_exams:
+                    st.info("Nenhum exame salvo encontrado para o paciente selecionado.")
             else:
                 exam_labels = [
                     f"#{e['id']} | {e['patient_name']} | {_to_br_date(e['exam_date'])} {e['exam_time']}"
@@ -1007,7 +1031,7 @@ def render_app() -> None:
                 if c_pdf.button("Abrir PDF"):
                     st.session_state["pdf_preview_exam_id"] = selected_exam["id"]
                     st.rerun()
-                if c_delete.button("Excluir exame (2 cliques)"):
+                if c_delete.button("Excluir (2 cliques)"):
                     pending = st.session_state.get("delete_exam_pending")
                     current = selected_exam["id"]
                     if pending == current:
