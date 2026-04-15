@@ -309,6 +309,7 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
 
     if cancel_edit:
         st.session_state["editing_model"] = None
+        st.session_state[mode_key] = None
         st.rerun()
 
     if submitted:
@@ -323,11 +324,9 @@ def render_template_manager(templates_data: dict[str, Any]) -> None:
             else:
                 models.append(payload)
                 st.success("Modelo salvo com sucesso.")
-                st.session_state[name_key] = ""
-                st.session_state[keywords_key] = ""
-                st.session_state[text_key] = ""
             save_templates(templates_data)
             st.session_state["editing_model"] = None
+            st.session_state[mode_key] = None
             st.rerun()
 
 
