@@ -959,20 +959,27 @@ def render_app() -> None:
         else:
             st.markdown("### Buscar paciente")
             search_name = st.text_input("Busca por nome do paciente", key="search_patient_name")
-            patients = search_patients_by_name(search_name) if search_name.strip() else []
+            normalized_input = _normalize_for_search(search_name)
+            candidates = search_patients_by_name(search_name) if search_name.strip() else []
+            patients = [p for p in candidates if p.normalized_name.startswith(normalized_input)] if normalized_input else []
             patient_id_for_exams: int | None = None
             if patients:
-                labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in patients]
-                chosen_label = st.selectbox(
+                patient_options = [0] + [p.id for p in patients]
+                patient_map = {p.id: p for p in patients}
+                chosen_patient_id = st.selectbox(
                     "Pacientes encontrados",
-                    ["-- selecionar paciente --"] + labels,
-                    key="open_exam_patient_choice",
+                    patient_options,
+                    format_func=lambda patient_id: (
+                        "-- selecionar paciente --"
+                        if patient_id == 0
+                        else f"{patient_map[patient_id].name} ({_to_br_date(patient_map[patient_id].birth_date)})"
+                    ),
+                    key="open_exam_patient_choice_id",
                 )
-                if chosen_label != "-- selecionar paciente --":
-                    chosen = patients[labels.index(chosen_label)]
-                    patient_id_for_exams = chosen.id
+                if chosen_patient_id != 0:
+                    patient_id_for_exams = chosen_patient_id
             else:
-                st.caption("Digite o nome para buscar pacientes e selecione um deles para carregar os exames.")
+                st.caption("Digite o nome para buscar pacientes pelo início do nome e selecione um deles.")
 
             exams = list_exams(patient_id=patient_id_for_exams) if patient_id_for_exams else []
             if not exams:
@@ -988,7 +995,7 @@ def render_app() -> None:
                 selected_exam = exams[exam_labels.index(selected_exam_label)]
 
                 c_open, c_pdf, c_delete = st.columns(3)
-                if c_open.button("Abrir exame", use_container_width=True):
+                if c_open.button("Editar exame", use_container_width=True):
                     new_exam = create_exam(
                         patient_id=selected_exam["patient_id"],
                         doctor_name=selected_exam["doctor_name"],
