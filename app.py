@@ -704,6 +704,20 @@ def render_app() -> None:
     st.markdown(
         """
         <style>
+        [data-testid="stSidebar"] div.stButton > button,
+        [data-testid="stSidebar"] div.stFormSubmitButton > button,
+        [data-testid="stSidebar"] div.stDownloadButton > button {
+            width: 100% !important;
+            min-height: 48px !important;
+            height: 48px !important;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem !important;
+            white-space: nowrap !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 0.25rem 0.5rem !important;
+        }
         div.stButton > button,
         div.stFormSubmitButton > button,
         div.stDownloadButton > button {
@@ -776,7 +790,7 @@ def render_app() -> None:
         st.header("Exames")
         b_new, b_open = st.columns(2)
         new_clicked = b_new.button("Novo exame", use_container_width=True)
-        open_clicked = b_open.button("Abrir exame existente", use_container_width=True)
+        open_clicked = b_open.button("Abrir exame", use_container_width=True)
         if new_clicked:
             st.session_state["flow_mode"] = "Novo exame"
         if open_clicked:
@@ -988,7 +1002,7 @@ def render_app() -> None:
                 selected_exam = exams[exam_labels.index(selected_exam_label)]
 
                 c_open, c_pdf, c_delete = st.columns(3)
-                if c_open.button("Abrir exame"):
+                if c_open.button("Abrir exame", use_container_width=True):
                     new_exam = create_exam(
                         patient_id=selected_exam["patient_id"],
                         doctor_name=selected_exam["doctor_name"],
@@ -1028,10 +1042,10 @@ def render_app() -> None:
                         st.session_state["last_auto_sections"] = dict(loaded.secoes)
                         st.session_state["transcript_input"] = report_data.get("transcript", "")
                     st.success(f"Exame #{selected_exam['id']} carregado como base para novo laudo (novo exame ativo #{new_exam.id}).")
-                if c_pdf.button("Abrir PDF"):
+                if c_pdf.button("Abrir PDF", use_container_width=True):
                     st.session_state["pdf_preview_exam_id"] = selected_exam["id"]
                     st.rerun()
-                if c_delete.button("Excluir (2 cliques)"):
+                if c_delete.button("Excluir (2x)", use_container_width=True):
                     pending = st.session_state.get("delete_exam_pending")
                     current = selected_exam["id"]
                     if pending == current:
