@@ -776,7 +776,7 @@ def render_app() -> None:
         st.header("Exames")
         b_new, b_open = st.columns(2)
         new_clicked = b_new.button("Novo exame", use_container_width=True)
-        open_clicked = b_open.button("Abrir exame", use_container_width=True)
+        open_clicked = b_open.button("Abrir exame existente", use_container_width=True)
         if new_clicked:
             st.session_state["flow_mode"] = "Novo exame"
         if open_clicked:
@@ -959,27 +959,20 @@ def render_app() -> None:
         else:
             st.markdown("### Buscar paciente")
             search_name = st.text_input("Busca por nome do paciente", key="search_patient_name")
-            normalized_input = _normalize_for_search(search_name)
-            candidates = search_patients_by_name(search_name) if search_name.strip() else []
-            patients = [p for p in candidates if p.normalized_name.startswith(normalized_input)] if normalized_input else []
+            patients = search_patients_by_name(search_name) if search_name.strip() else []
             patient_id_for_exams: int | None = None
             if patients:
-                patient_options = [0] + [p.id for p in patients]
-                patient_map = {p.id: p for p in patients}
-                chosen_patient_id = st.selectbox(
+                labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in patients]
+                chosen_label = st.selectbox(
                     "Pacientes encontrados",
-                    patient_options,
-                    format_func=lambda patient_id: (
-                        "-- selecionar paciente --"
-                        if patient_id == 0
-                        else f"{patient_map[patient_id].name} ({_to_br_date(patient_map[patient_id].birth_date)})"
-                    ),
-                    key="open_exam_patient_choice_id",
+                    ["-- selecionar paciente --"] + labels,
+                    key="open_exam_patient_choice",
                 )
-                if chosen_patient_id != 0:
-                    patient_id_for_exams = chosen_patient_id
+                if chosen_label != "-- selecionar paciente --":
+                    chosen = patients[labels.index(chosen_label)]
+                    patient_id_for_exams = chosen.id
             else:
-                st.caption("Digite o nome para buscar pacientes pelo início do nome e selecione um deles.")
+                st.caption("Digite o nome para buscar pacientes e selecione um deles para carregar os exames.")
 
             exams = list_exams(patient_id=patient_id_for_exams) if patient_id_for_exams else []
             if not exams:
@@ -995,7 +988,7 @@ def render_app() -> None:
                 selected_exam = exams[exam_labels.index(selected_exam_label)]
 
                 c_open, c_pdf, c_delete = st.columns(3)
-                if c_open.button("Editar exame", use_container_width=True):
+                if c_open.button("Abrir exame"):
                     new_exam = create_exam(
                         patient_id=selected_exam["patient_id"],
                         doctor_name=selected_exam["doctor_name"],
@@ -1035,10 +1028,10 @@ def render_app() -> None:
                         st.session_state["last_auto_sections"] = dict(loaded.secoes)
                         st.session_state["transcript_input"] = report_data.get("transcript", "")
                     st.success(f"Exame #{selected_exam['id']} carregado como base para novo laudo (novo exame ativo #{new_exam.id}).")
-                if c_pdf.button("Abrir PDF", use_container_width=True):
+                if c_pdf.button("Abrir PDF"):
                     st.session_state["pdf_preview_exam_id"] = selected_exam["id"]
                     st.rerun()
-                if c_delete.button("Excluir (2 cliques)", use_container_width=True):
+                if c_delete.button("Excluir (2 cliques)"):
                     pending = st.session_state.get("delete_exam_pending")
                     current = selected_exam["id"]
                     if pending == current:
