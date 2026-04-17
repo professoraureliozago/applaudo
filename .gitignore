@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Runtime outputs
+captured_images/
+captured_videos/
+saved_reports/
+
+# Env / tooling
+.venv/
