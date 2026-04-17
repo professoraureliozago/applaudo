@@ -2,10 +2,14 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Install requirements",
+      "label": "Install requirements (.venv)",
       "type": "shell",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "pip", "install", "-r", "requirements.txt"],
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["-m", "pip", "install", "-r", "${workspaceFolder}/requirements.txt"],
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+        "args": ["-m", "pip", "install", "-r", "${workspaceFolder}\\requirements.txt"]
+      },
       "problemMatcher": []
     }
   ]
