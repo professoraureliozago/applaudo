@@ -712,5 +712,576 @@ def render_app() -> None:
         st.warning("Usando configuração mínima vazia para permitir correção no Gerenciar modelos.")
         templates_data = {"sections": []}
 
-    
-    
+    engine = TemplateEngine(config=templates_data)
+
+    st.session_state.setdefault("transcript_input", "")
+    st.session_state.setdefault("recording_active", True)
+    st.session_state.setdefault("last_mic_chunk_hash", None)
+    st.session_state.setdefault("last_voice_transcript", "")
+    st.session_state.setdefault("last_voice_status", "")
+    st.session_state.setdefault("selected_gallery_paths", [])
+    st.session_state.setdefault("current_exam_id", None)
+    st.session_state.setdefault("current_patient_id", None)
+    st.session_state.setdefault("current_patient_name", "")
+    st.session_state.setdefault("current_patient_birth_date", "")
+    st.session_state.setdefault("current_patient_sexo", "")
+    st.session_state.setdefault("current_patient_convenio", "")
+    st.session_state.setdefault("draft_doctor_name", "Dr(a).")
+    st.session_state.setdefault("draft_executante_name", "Dr(a).")
+    st.session_state.setdefault("draft_footer_text", "Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369")
+    st.session_state.setdefault("draft_exam_date", date.today())
+    st.session_state.setdefault("draft_exam_time", datetime.now().time().replace(second=0, microsecond=0))
+    st.session_state.setdefault("draft_birth_date_text", "")
+    st.session_state.setdefault("birth_input", "")
+    st.session_state.setdefault("new_patient_name_input", "")
+    st.session_state.setdefault("selected_existing_patient_id", None)
+    st.session_state.setdefault("flow_mode", "Novo exame")
+    st.session_state.setdefault("pending_transcript_append", "")
+    st.session_state.setdefault("pending_section_updates", {})
+    st.session_state.setdefault("last_auto_sections", {})
+    st.session_state.setdefault("cleaned_unassigned_once", False)
+    st.session_state.setdefault("last_video_capture_ts", 0)
+    st.session_state.setdefault("last_webrtc_capture_ts", 0)
+    st.session_state.setdefault("last_continuous_audio_ts", 0)
+    st.session_state.setdefault("audio_metrics", {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0})
+    st.session_state.setdefault("pdf_preview_exam_id", None)
+    if not st.session_state.get("cleaned_unassigned_once"):
+        clear_unassigned_images()
+        draft_video_dir = Path("captured_videos") / "unassigned"
+        if draft_video_dir.exists():
+            for p in draft_video_dir.glob("*"):
+                if p.is_file():
+                    p.unlink(missing_ok=True)
+        st.session_state["cleaned_unassigned_once"] = True
+
+    with st.sidebar:
+        st.header("Exames")
+        b_new, b_open = st.columns(2)
+        new_clicked = b_new.button("Novo exame", use_container_width=True)
+        open_clicked = b_open.button("Abrir exame existente", use_container_width=True)
+        if new_clicked:
+            st.session_state["flow_mode"] = "Novo exame"
+        if open_clicked:
+            st.session_state["flow_mode"] = "Abrir exame existente"
+        flow = st.session_state.get("flow_mode", "Novo exame")
+
+        if new_clicked:
+            st.session_state["current_patient_id"] = None
+            st.session_state["current_patient_name"] = ""
+            st.session_state["current_patient_birth_date"] = ""
+            st.session_state["current_patient_sexo"] = ""
+            st.session_state["current_patient_convenio"] = ""
+            st.session_state["current_exam_id"] = None
+            st.session_state["selected_gallery_paths"] = []
+            st.session_state["report"] = None
+            st.session_state["last_auto_sections"] = {}
+            st.session_state["transcript_input"] = ""
+            st.session_state["draft_doctor_name"] = "Dr(a)."
+            st.session_state["draft_executante_name"] = "Dr(a)."
+            st.session_state["draft_footer_text"] = "Avenida Santos Dumont 2335 - Telefone : 3322 4111 - 99199 6369"
+            st.session_state["draft_exam_date"] = date.today()
+            st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
+            st.session_state["draft_birth_date_text"] = ""
+            st.session_state["birth_input"] = ""
+            st.session_state["new_patient_name_input"] = ""
+            st.session_state["selected_existing_patient_id"] = None
+            st.session_state["last_video_capture_ts"] = 0
+            st.session_state["last_webrtc_capture_ts"] = 0
+            st.session_state["last_continuous_audio_ts"] = 0
+            st.session_state["audio_metrics"] = {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0}
+            st.session_state["pdf_preview_exam_id"] = None
+            clear_unassigned_images()
+            draft_video_dir = Path("captured_videos") / "unassigned"
+            if draft_video_dir.exists():
+                for p in draft_video_dir.glob("*"):
+                    if p.is_file():
+                        p.unlink(missing_ok=True)
+
+        if flow == "Novo exame":
+            st.markdown("### Cadastro do paciente e exame")
+            patient_name = st.text_input("Nome do Paciente", key="new_patient_name_input")
+            existing_candidates = search_patients_by_name(patient_name) if patient_name.strip() else []
+            normalized_input = _normalize_for_search(patient_name)
+            prefix_matches = [p for p in existing_candidates if p.normalized_name.startswith(normalized_input)] if normalized_input else []
+            if prefix_matches:
+                labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in prefix_matches]
+                chosen_label = st.selectbox("Pacientes já cadastrados (refino automático)", ["-- selecionar --"] + labels, key="existing_patient_quickpick")
+                if chosen_label != "-- selecionar --":
+                    chosen = prefix_matches[labels.index(chosen_label)]
+                    st.session_state["selected_existing_patient_id"] = chosen.id
+                    st.session_state["birth_input"] = _to_br_date(chosen.birth_date)
+                    st.session_state["current_patient_sexo"] = chosen.sexo
+                    st.session_state["current_patient_convenio"] = chosen.convenio
+                    patient_name = chosen.name
+            sexo_options = ["", "Feminino", "Masculino"]
+            sexo_default = st.session_state.get("current_patient_sexo", "")
+            sexo_index = sexo_options.index(sexo_default) if sexo_default in sexo_options else 0
+            sexo = st.selectbox("Sexo", sexo_options, index=sexo_index)
+            birth_text = st.text_input(
+                "Data de Nascimento (DD/MM/AAAA)",
+                key="birth_input",
+                placeholder="DD/MM/AAAA",
+                max_chars=10,
+                on_change=_auto_format_birth_input,
+            )
+            st.session_state["draft_birth_date_text"] = birth_text
+            nascimento = _parse_br_date(birth_text)
+            idade_calc = calculate_age(_to_iso_date(nascimento)) if nascimento else 0
+            st.text_input("Idade (automática)", value=str(max(idade_calc, 0)) if nascimento else "", disabled=True)
+            doctor_options = ["Dr(a)."] + [d for d in list_doctor_names() if d != "Dr(a)."]
+            doctor_default = st.session_state.get("draft_doctor_name", "Dr(a).")
+            if doctor_default not in doctor_options:
+                doctor_options.append(doctor_default)
+            medico_sugestao = st.selectbox(
+                "Nome do Médico Solicitante (com sugestões)",
+                options=doctor_options,
+                index=doctor_options.index(doctor_default),
+            )
+            medico_novo = st.text_input("Ou digite novo médico solicitante (opcional)")
+            medico = medico_novo.strip() or medico_sugestao
+            if medico_novo.strip() and medico_novo.strip() not in doctor_options:
+                if st.button("Cadastrar novo médico solicitante"):
+                    add_doctor_suggestion(medico_novo.strip())
+                    st.success("Novo médico solicitante cadastrado nas sugestões.")
+
+            executante_options = ["Dr(a)."] + [d for d in list_executante_names() if d != "Dr(a)."]
+            executante_default = st.session_state.get("draft_executante_name", "Dr(a).")
+            if executante_default not in executante_options:
+                executante_options.append(executante_default)
+            executante_sugestao = st.selectbox(
+                "Médico Executante (com sugestões)",
+                options=executante_options,
+                index=executante_options.index(executante_default),
+            )
+            executante_novo = st.text_input("Ou digite novo médico executante (opcional)")
+            executante = executante_novo.strip() or executante_sugestao
+            footer_text = st.session_state.get("draft_footer_text", "")
+            if executante_novo.strip() and executante_novo.strip() not in executante_options:
+                st.caption("Novo médico executante: preencha os dados do rodapé antes de cadastrar.")
+                footer_text = st.text_area(
+                    "Dados do rodapé (endereço, telefones etc.)",
+                    value=footer_text,
+                    key="executante_footer_input",
+                    height=80,
+                )
+                if st.button("Cadastrar médico executante"):
+                    if not footer_text.strip():
+                        st.warning("Informe os dados do rodapé para cadastrar o médico executante.")
+                    else:
+                        upsert_executante_profile(executante_novo.strip(), footer_text.strip())
+                        st.session_state["draft_footer_text"] = footer_text.strip()
+                        st.success("Médico executante cadastrado com dados de rodapé.")
+            else:
+                st.session_state["draft_footer_text"] = get_executante_footer(executante) or st.session_state.get(
+                    "draft_footer_text",
+                    "",
+                )
+
+            convenio_options = [""] + list_convenios()
+            convenio_default = st.session_state.get("current_patient_convenio", "")
+            if convenio_default and convenio_default not in convenio_options:
+                convenio_options.append(convenio_default)
+            convenio_sugestao = st.selectbox(
+                "Convênio (com sugestões)",
+                options=convenio_options,
+                index=convenio_options.index(convenio_default) if convenio_default in convenio_options else 0,
+            )
+            convenio_novo = st.text_input("Ou digite novo convênio (opcional)")
+            convenio = convenio_novo.strip() or convenio_sugestao
+            if convenio_novo.strip() and convenio_novo.strip() not in convenio_options:
+                if st.button("Cadastrar novo convênio"):
+                    add_convenio_suggestion(convenio_novo.strip())
+                    st.success("Novo convênio cadastrado nas sugestões.")
+            now = datetime.now()
+            data_exame_dt = st.date_input("Data do Exame", value=st.session_state.get("draft_exam_date", now.date()), format="DD/MM/YYYY")
+            hora_exame_dt = st.time_input("Hora do exame", value=st.session_state.get("draft_exam_time", now.time().replace(second=0, microsecond=0)))
+
+            if st.button("Salvar dados do paciente"):
+                if not patient_name.strip():
+                    st.error("Nome do paciente é obrigatório.")
+                elif not nascimento:
+                    st.error("Informe a data de nascimento no formato DD/MM/AAAA.")
+                elif nascimento > date.today():
+                    st.error("Data de nascimento não pode ser futura.")
+                else:
+                    duplicate = None
+                    candidates = search_patients_by_name(patient_name.strip())
+                    duplicate = next(
+                        (p for p in candidates if p.normalized_name == " ".join(patient_name.strip().lower().split()) and p.birth_date == _to_iso_date(nascimento)),
+                        None,
+                    )
+                    if duplicate:
+                        st.info("Paciente já cadastrado: usando cadastro existente para novo exame.")
+                    patient, _ = create_or_get_patient(
+                        name=patient_name.strip(),
+                        sexo=sexo,
+                        birth_date_iso=_to_iso_date(nascimento),
+                    )
+                    st.session_state["current_patient_id"] = patient.id
+                    st.session_state["current_patient_name"] = patient.name
+                    st.session_state["current_patient_birth_date"] = patient.birth_date
+                    st.session_state["current_patient_sexo"] = patient.sexo
+                    st.session_state["current_patient_convenio"] = convenio
+                    st.session_state["draft_doctor_name"] = medico
+                    st.session_state["draft_executante_name"] = executante
+                    st.session_state["draft_exam_date"] = data_exame_dt
+                    st.session_state["draft_exam_time"] = hora_exame_dt
+                    exam = create_exam(
+                        patient_id=patient.id,
+                        doctor_name=medico,
+                        exam_date_iso=_to_iso_date(data_exame_dt),
+                        exam_time_hhmm=hora_exame_dt.strftime("%H:%M"),
+                        convenio=convenio,
+                        executante=executante,
+                    )
+                    st.session_state["current_exam_id"] = exam.id
+                    st.session_state["selected_gallery_paths"] = []
+                    st.success(f"Paciente {patient.name} pronto. Exame ativo #{exam.id} criado para autosave de mídias.")
+
+        else:
+            st.markdown("### Buscar paciente")
+            search_name = st.text_input("Busca por nome do paciente", key="search_patient_name")
+            patients = search_patients_by_name(search_name) if search_name.strip() else []
+            patient_id_for_exams: int | None = None
+            if patients:
+                labels = [f"{p.name} ({_to_br_date(p.birth_date)})" for p in patients]
+                chosen_label = st.selectbox("Pacientes encontrados", labels)
+                chosen = patients[labels.index(chosen_label)]
+                patient_id_for_exams = chosen.id
+
+            if search_name.strip():
+                exams = list_exams(patient_id=patient_id_for_exams) if patient_id_for_exams else []
+            else:
+                exams = list_exams()
+            if not exams:
+                st.info("Nenhum exame salvo encontrado.")
+            else:
+                exam_labels = [
+                    f"#{e['id']} | {e['patient_name']} | {_to_br_date(e['exam_date'])} {e['exam_time']}"
+                    for e in exams
+                ]
+                selected_exam_label = st.selectbox("Exames salvos", exam_labels)
+                selected_exam = exams[exam_labels.index(selected_exam_label)]
+
+                c_open, c_pdf, c_delete = st.columns(3)
+                if c_open.button("Abrir exame"):
+                    new_exam = create_exam(
+                        patient_id=selected_exam["patient_id"],
+                        doctor_name=selected_exam["doctor_name"],
+                        exam_date_iso=_to_iso_date(date.today()),
+                        exam_time_hhmm=datetime.now().strftime("%H:%M"),
+                        convenio=selected_exam.get("convenio", ""),
+                        executante=selected_exam.get("executante", ""),
+                    )
+                    st.session_state["current_exam_id"] = new_exam.id
+                    st.session_state["current_patient_id"] = selected_exam["patient_id"]
+                    st.session_state["current_patient_name"] = selected_exam["patient_name"]
+                    st.session_state["current_patient_birth_date"] = selected_exam["birth_date"]
+                    st.session_state["current_patient_sexo"] = selected_exam["sexo"]
+                    st.session_state["current_patient_convenio"] = selected_exam["convenio"]
+                    st.session_state["draft_doctor_name"] = selected_exam["doctor_name"]
+                    st.session_state["draft_executante_name"] = selected_exam.get("executante", "Dr(a).")
+                    st.session_state["draft_footer_text"] = get_executante_footer(selected_exam.get("executante", ""))
+                    st.session_state["draft_exam_date"] = date.today()
+                    st.session_state["draft_exam_time"] = datetime.now().time().replace(second=0, microsecond=0)
+                    st.session_state["selected_gallery_paths"] = _clone_exam_media(selected_exam["id"], new_exam.id)
+                    report_data = get_exam_report(selected_exam["id"])
+                    if report_data:
+                        loaded = ReportData(
+                            paciente=selected_exam["patient_name"],
+                            medico=selected_exam["doctor_name"],
+                            medico_executante=selected_exam.get("executante", ""),
+                            sexo=selected_exam["sexo"],
+                            idade=str(max(calculate_age(selected_exam["birth_date"]), 0)),
+                            data_exame=_to_br_date(selected_exam["exam_date"]),
+                            hora_exame=selected_exam["exam_time"],
+                            convenio=selected_exam["convenio"],
+                            footer_text=get_executante_footer(selected_exam.get("executante", "")),
+                        )
+                        loaded.secoes = report_data.get("sections", {})
+                        loaded.ensure_sections()
+                        st.session_state["report"] = loaded
+                        st.session_state["last_auto_sections"] = dict(loaded.secoes)
+                        st.session_state["transcript_input"] = report_data.get("transcript", "")
+                    st.success(f"Exame #{selected_exam['id']} carregado como base para novo laudo (novo exame ativo #{new_exam.id}).")
+                if c_pdf.button("Abrir PDF"):
+                    st.session_state["pdf_preview_exam_id"] = selected_exam["id"]
+                    st.rerun()
+                if c_delete.button("Excluir exame (2 cliques)"):
+                    pending = st.session_state.get("delete_exam_pending")
+                    current = selected_exam["id"]
+                    if pending == current:
+                        delete_exam(current)
+                        st.session_state["delete_exam_pending"] = None
+                        if st.session_state.get("current_exam_id") == current:
+                            st.session_state["current_exam_id"] = None
+                        st.success("Exame excluído.")
+                        st.rerun()
+                    else:
+                        st.session_state["delete_exam_pending"] = current
+                        st.warning("Clique novamente para confirmar exclusão.")
+
+        st.markdown("---")
+        uploaded_images: list = []
+        selected_preview = st.session_state.get("selected_gallery_paths", [])
+        existing_selected_preview = [path for path in selected_preview if Path(path).exists()]
+        if existing_selected_preview:
+            st.markdown("**Imagens selecionadas para o PDF**")
+            for path in existing_selected_preview:
+                st.image(path, use_container_width=True)
+                st.caption(get_image_caption(Path(path), exam_id=st.session_state.get("current_exam_id")))
+        elif selected_preview:
+            st.warning("Algumas imagens selecionadas não existem mais. Atualize a seleção na aba Imagens.")
+
+    pdf_preview_exam_id = st.session_state.get("pdf_preview_exam_id")
+    if pdf_preview_exam_id:
+        pdf_path = Path("saved_reports") / f"exam_{pdf_preview_exam_id}.pdf"
+        st.subheader(f"PDF salvo do exame #{pdf_preview_exam_id}")
+        if pdf_path.exists():
+            pdf_bytes = pdf_path.read_bytes()
+            encoded = base64.b64encode(pdf_bytes).decode("ascii")
+            st.download_button(
+                label="Baixar PDF salvo",
+                data=pdf_bytes,
+                file_name=pdf_path.name,
+                mime="application/pdf",
+                use_container_width=False,
+            )
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{encoded}" width="100%" height="900" style="border:1px solid #444;border-radius:8px;"></iframe>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.warning(f"PDF do exame #{pdf_preview_exam_id} ainda não foi salvo.")
+        if st.button("Retornar ao início", use_container_width=False):
+            st.session_state["pdf_preview_exam_id"] = None
+            st.rerun()
+        return
+
+    current_exam = get_exam(st.session_state["current_exam_id"]) if st.session_state.get("current_exam_id") else None
+    if current_exam:
+        st.success(
+            f"Exame ativo #{current_exam['id']} • Paciente: {current_exam['patient_name']} • "
+            f"Data: {_to_br_date(current_exam['exam_date'])} {current_exam['exam_time']}"
+        )
+        with st.expander("Editar dados do exame ativo"):
+            new_doctor = st.text_input("Médico solicitante (edição)", value=current_exam["doctor_name"], key="edit_doctor_name")
+            new_convenio = st.text_input("Convênio (edição)", value=current_exam.get("convenio", ""), key="edit_convenio")
+            new_executante = st.text_input("Médico executante (edição)", value=current_exam.get("executante", ""), key="edit_executante")
+            footer_edit = st.text_area(
+                "Dados do rodapé do médico executante",
+                value=get_executante_footer(new_executante) or st.session_state.get("draft_footer_text", ""),
+                key="edit_executante_footer",
+                height=80,
+            )
+            new_exam_date = st.date_input(
+                "Data do exame (edição)",
+                value=datetime.strptime(current_exam["exam_date"], "%Y-%m-%d").date(),
+                format="DD/MM/YYYY",
+                key="edit_exam_date",
+            )
+            new_exam_time = st.time_input(
+                "Hora do exame (edição)",
+                value=datetime.strptime(current_exam["exam_time"], "%H:%M").time(),
+                key="edit_exam_time",
+            )
+            if st.button("Salvar alterações do exame"):
+                update_exam(
+                    exam_id=current_exam["id"],
+                    doctor_name=new_doctor,
+                    exam_date_iso=_to_iso_date(new_exam_date),
+                    exam_time_hhmm=new_exam_time.strftime("%H:%M"),
+                    convenio=new_convenio,
+                    executante=new_executante,
+                )
+                st.session_state["current_patient_convenio"] = new_convenio
+                st.session_state["draft_executante_name"] = new_executante
+                st.session_state["draft_footer_text"] = footer_edit
+                upsert_executante_profile(new_executante, footer_edit)
+                st.success("Dados do exame atualizados.")
+                st.rerun()
+    else:
+        if st.session_state.get("current_patient_id"):
+            st.info(
+                f"Paciente ativo: {st.session_state.get('current_patient_name')} "
+                f"(nasc. {_to_br_date(st.session_state.get('current_patient_birth_date')) if st.session_state.get('current_patient_birth_date') else '-'})"
+            )
+            st.caption("Gere e revise o laudo; depois clique em 'Salvar exame' para persistir o exame ativo sem perda de mídia.")
+        else:
+            st.warning("Nenhum paciente/exame ativo. Cadastre paciente ou abra exame para continuar.")
+
+    tab_procedimento, tab_modelos = st.tabs(["Procedimento", "Gerenciar modelos"])
+    with tab_modelos:
+        render_template_manager(templates_data)
+
+    with tab_procedimento:
+        st.caption("Tela única do procedimento: capture imagens/filmagem e dite o laudo no mesmo fluxo.")
+        render_image_capture_tab(st.session_state.get("current_exam_id"))
+        st.markdown("---")
+        render_auto_transcription()
+        st.subheader("Narração/Transcrição")
+        pending_text = st.session_state.get("pending_transcript_append", "")
+        if pending_text:
+            previous = st.session_state.get("transcript_input", "")
+            st.session_state["transcript_input"] = f"{previous} {pending_text}".strip()
+            st.session_state["pending_transcript_append"] = ""
+        st.text_area("Cole aqui a transcrição do áudio (ou narração convertida):", height=220, key="transcript_input")
+
+        can_generate = bool(st.session_state.get("transcript_input", "").strip())
+        if st.button("Gerar laudo sugerido", disabled=not can_generate):
+            selected_gallery_items = load_selected_images_with_captions(
+                st.session_state.get("selected_gallery_paths", []),
+                exam_id=st.session_state.get("current_exam_id"),
+            )
+            gallery_bytes = [b for b, _ in selected_gallery_items]
+            gallery_captions = [c for _, c in selected_gallery_items]
+            manual_captions = [f"imagem enviada {idx + 1}" for idx in range(len(uploaded_images))]
+            birth_iso = current_exam["birth_date"] if current_exam else st.session_state.get("current_patient_birth_date", "")
+            birth_date = datetime.strptime(birth_iso, "%Y-%m-%d").date() if birth_iso else date.today()
+            paciente_nome = current_exam["patient_name"] if current_exam else st.session_state.get("current_patient_name", "")
+            medico_nome = current_exam["doctor_name"] if current_exam else st.session_state.get("draft_doctor_name", "Dr(a).")
+            sexo_nome = current_exam["sexo"] if current_exam else st.session_state.get("current_patient_sexo", "")
+            convenio_nome = current_exam["convenio"] if current_exam else st.session_state.get("current_patient_convenio", "")
+            executante_nome = current_exam.get("executante", "") if current_exam else st.session_state.get("draft_executante_name", "Dr(a).")
+            footer_text = get_executante_footer(executante_nome) or st.session_state.get("draft_footer_text", "")
+            data_exam_iso = current_exam["exam_date"] if current_exam else _to_iso_date(st.session_state.get("draft_exam_date", date.today()))
+            hora_exam = current_exam["exam_time"] if current_exam else st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M")
+            report = st.session_state.get("report")
+            if report is None:
+                report = ReportData(
+                    paciente=paciente_nome,
+                    medico=medico_nome,
+                    sexo=sexo_nome,
+                    idade=str(max(calculate_age(_to_iso_date(birth_date)), 0)),
+                    data_exame=_to_br_date(data_exam_iso),
+                    hora_exame=hora_exam,
+                    convenio=convenio_nome,
+                    medico_executante=executante_nome,
+                    footer_text=footer_text,
+                    image_bytes=gallery_bytes + [img.getvalue() for img in uploaded_images],
+                    image_captions=gallery_captions + manual_captions,
+                )
+            else:
+                report.paciente = paciente_nome
+                report.medico = medico_nome
+                report.sexo = sexo_nome
+                report.idade = str(max(calculate_age(_to_iso_date(birth_date)), 0))
+                report.data_exame = _to_br_date(data_exam_iso)
+                report.hora_exame = hora_exam
+                report.convenio = convenio_nome
+                report.medico_executante = executante_nome
+                report.footer_text = footer_text
+                report.image_bytes = gallery_bytes + [img.getvalue() for img in uploaded_images]
+                report.image_captions = gallery_captions + manual_captions
+
+            rendered_sections = engine.render_from_transcript(st.session_state["transcript_input"])
+            last_auto_sections = st.session_state.get("last_auto_sections", {})
+            report.ensure_sections()
+            for section, new_text in rendered_sections.items():
+                current_text = report.secoes.get(section, "")
+                previous_auto = str(last_auto_sections.get(section, ""))
+                should_update = (not str(current_text).strip()) or (str(current_text).strip() == previous_auto.strip())
+                if should_update and str(new_text).strip():
+                    report.secoes[section] = new_text
+                    st.session_state[f"sec_{section}"] = new_text
+            report.ensure_sections()
+            st.session_state["last_auto_sections"] = dict(rendered_sections)
+            st.session_state["report"] = report
+
+        report: ReportData | None = st.session_state.get("report")
+        if report:
+            selected_gallery_items_live = load_selected_images_with_captions(
+                st.session_state.get("selected_gallery_paths", []),
+                exam_id=st.session_state.get("current_exam_id"),
+            )
+            report.image_bytes = [b for b, _ in selected_gallery_items_live]
+            report.image_captions = [c for _, c in selected_gallery_items_live]
+            st.subheader("Revisão por seção")
+            pending_updates = st.session_state.get("pending_section_updates", {})
+            if pending_updates:
+                for section, reviewed in pending_updates.items():
+                    report.secoes[section] = reviewed
+                    st.session_state[f"sec_{section}"] = reviewed
+                st.session_state["pending_section_updates"] = {}
+            for section, text in report.secoes.items():
+                report.secoes[section] = st.text_area(section.replace("_", " ").title(), value=text, key=f"sec_{section}")
+                if st.button("Revisar texto", key=f"review_{section}"):
+                    before_text = report.secoes[section]
+                    reviewed = _apply_models_for_single_section(
+                        engine=engine,
+                        section_id=section,
+                        input_text=report.secoes[section],
+                        current_text=report.secoes[section],
+                    )
+                    report.secoes[section] = reviewed
+                    st.session_state["pending_section_updates"] = {section: reviewed}
+                    if reviewed != before_text:
+                        st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
+                    else:
+                        st.warning("Nenhum modelo aplicável encontrado para o texto informado nesta seção.")
+                    st.rerun()
+
+            pdf_data = generate_pdf(report)
+            st.download_button(
+                label="Baixar PDF",
+                data=pdf_data,
+                file_name=f"laudo_colonoscopia_{report.paciente or 'paciente'}.pdf",
+                mime="application/pdf",
+            )
+            if st.button("Salvar exame", disabled=not bool(st.session_state.get("current_patient_id"))):
+                active_exam_id = st.session_state.get("current_exam_id")
+                if active_exam_id:
+                    update_exam(
+                        exam_id=int(active_exam_id),
+                        doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
+                        exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
+                        exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                        convenio=st.session_state.get("current_patient_convenio", ""),
+                        executante=st.session_state.get("draft_executante_name", report.medico_executante or "Dr(a)."),
+                    )
+                    exam = get_exam(int(active_exam_id))
+                    if not exam:
+                        st.error("Não foi possível localizar o exame ativo para salvar.")
+                        st.stop()
+                    exam_id = int(active_exam_id)
+                else:
+                    created = create_exam(
+                        patient_id=int(st.session_state["current_patient_id"]),
+                        doctor_name=st.session_state.get("draft_doctor_name", report.medico or "Dr(a)."),
+                        exam_date_iso=_to_iso_date(st.session_state.get("draft_exam_date", date.today())),
+                        exam_time_hhmm=st.session_state.get("draft_exam_time", datetime.now().time()).strftime("%H:%M"),
+                        convenio=st.session_state.get("current_patient_convenio", ""),
+                        executante=st.session_state.get("draft_executante_name", report.medico_executante or "Dr(a)."),
+                    )
+                    exam_id = created.id
+                moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam_id)
+                for image_path in moved_images:
+                    add_exam_image(exam_id, str(image_path), get_image_caption(image_path, exam_id=exam_id))
+                draft_video_dir = Path("captured_videos") / "unassigned"
+                exam_video_dir = Path("captured_videos") / f"exam_{exam_id}"
+                exam_video_dir.mkdir(parents=True, exist_ok=True)
+                if draft_video_dir.exists():
+                    for draft_video in sorted(draft_video_dir.glob("*")):
+                        if draft_video.suffix.lower() not in {".mp4", ".webm", ".mov"}:
+                            continue
+                        target = exam_video_dir / draft_video.name
+                        if target.exists():
+                            target = exam_video_dir / f"{target.stem}_{datetime.now().strftime('%H%M%S%f')}{target.suffix}"
+                        shutil.move(str(draft_video), str(target))
+                        add_exam_video(exam_id, str(target))
+                save_exam_report(
+                    exam_id=exam_id,
+                    transcript=st.session_state.get("transcript_input", ""),
+                    sections=report.secoes,
+                )
+                reports_dir = Path("saved_reports")
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                (reports_dir / f"exam_{exam_id}.pdf").write_bytes(pdf_data)
+                st.session_state["current_exam_id"] = exam_id
+                existing_selected = [p for p in st.session_state.get("selected_gallery_paths", []) if Path(p).exists()]
+                st.session_state["selected_gallery_paths"] = sorted(set(existing_selected + [str(p) for p in moved_images]), reverse=True)
+                st.success(f"Exame #{exam_id} salvo com sucesso para o paciente {report.paciente}.")
+
+
+if __name__ == "__main__":
+    render_app()
