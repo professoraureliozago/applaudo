@@ -1318,9 +1318,10 @@ def render_app() -> None:
 
     with tab_procedimento:
         st.caption("Tela única do procedimento: capture imagens/filmagem e dite o laudo no mesmo fluxo.")
+        render_auto_transcription()
+        st.markdown("---")
         render_image_capture_tab(st.session_state.get("current_exam_id"))
         st.markdown("---")
-        render_auto_transcription()
         st.subheader("Narração/Transcrição")
         pending_text = st.session_state.get("pending_transcript_append", "")
         if pending_text:
