@@ -61,6 +61,31 @@ TEMPLATES_BACKUP_PATH = Path("templates/colonoscopia_templates.backup.json")
 TEMPLATES_DEFAULT_PATH = Path("templates/colonoscopia_templates.default.json")
 
 
+def inject_sidebar_button_style() -> None:
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] div.stButton > button {
+            width: 100%;
+            min-height: 44px;
+            padding: 0.45rem 0.35rem;
+            border-radius: 7px;
+        }
+
+        [data-testid="stSidebar"] div.stButton > button p {
+            font-size: 0.86rem;
+            line-height: 1.15;
+            text-align: center;
+            white-space: normal;
+            overflow-wrap: normal;
+            word-break: normal;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def ensure_streamlit_context() -> None:
     if get_script_run_ctx() is not None:
         return
@@ -701,6 +726,7 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
 def render_app() -> None:
     st.set_page_config(page_title="Laudo Colonoscopia por Áudio", layout="wide")
+    inject_sidebar_button_style()
     st.title("Laudo de Colonoscopia (MVP)")
     st.caption("Protótipo: cadastro seguro de paciente/exame -> áudio/transcrição -> revisão -> PDF")
     ensure_db()
@@ -758,7 +784,7 @@ def render_app() -> None:
         st.header("Exames")
         b_new, b_open = st.columns(2)
         new_clicked = b_new.button("Novo exame", use_container_width=True)
-        open_clicked = b_open.button("Abrir exame existente", use_container_width=True)
+        open_clicked = b_open.button("Abrir existente", help="Abrir exame existente", use_container_width=True)
         if new_clicked:
             st.session_state["flow_mode"] = "Novo exame"
         if open_clicked:
@@ -964,7 +990,7 @@ def render_app() -> None:
                 selected_exam = exams[exam_labels.index(selected_exam_label)]
 
                 c_open, c_pdf, c_delete = st.columns(3)
-                if c_open.button("Abrir exame"):
+                if c_open.button("Abrir exame", use_container_width=True):
                     new_exam = create_exam(
                         patient_id=selected_exam["patient_id"],
                         doctor_name=selected_exam["doctor_name"],
@@ -1004,10 +1030,10 @@ def render_app() -> None:
                         st.session_state["last_auto_sections"] = dict(loaded.secoes)
                         st.session_state["transcript_input"] = report_data.get("transcript", "")
                     st.success(f"Exame #{selected_exam['id']} carregado como base para novo laudo (novo exame ativo #{new_exam.id}).")
-                if c_pdf.button("Abrir PDF"):
+                if c_pdf.button("Abrir PDF", use_container_width=True):
                     st.session_state["pdf_preview_exam_id"] = selected_exam["id"]
                     st.rerun()
-                if c_delete.button("Excluir exame (2 cliques)"):
+                if c_delete.button("Excluir", help="Excluir exame (2 cliques)", use_container_width=True):
                     pending = st.session_state.get("delete_exam_pending")
                     current = selected_exam["id"]
                     if pending == current:
