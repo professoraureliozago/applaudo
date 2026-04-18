@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -50,14 +51,7 @@ def transcribe_audio_bytes(
 
 
 def _transcribe_local(file_path: str, language: str, model_size: str) -> str:
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError(
-            "Dependência 'faster-whisper' não encontrada. Instale com: pip install faster-whisper"
-        ) from exc
-
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    model = _get_local_model(model_size)
     try:
         segments, _ = model.transcribe(file_path, language=language, vad_filter=True)
     except Exception as exc:  # pragma: no cover
@@ -81,6 +75,18 @@ def _transcribe_local(file_path: str, language: str, model_size: str) -> str:
 
     text = " ".join(segment.text.strip() for segment in segments).strip()
     return text
+
+
+@lru_cache(maxsize=4)
+def _get_local_model(model_size: str):
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(
+            "Dependência 'faster-whisper' não encontrada. Instale com: pip install faster-whisper"
+        ) from exc
+
+    return WhisperModel(model_size, device="cpu", compute_type="int8")
 
 
 def _try_ffmpeg_to_wav(file_path: str) -> str | None:

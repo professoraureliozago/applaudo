@@ -543,8 +543,16 @@ def _get_transcription_settings() -> tuple[str, str, str, str]:
     return provider, local_model_size, openai_key, openai_model
 
 
-def _transcribe_chunk(audio_bytes: bytes, filename: str, provider: str, local_model_size: str, openai_key: str, openai_model: str) -> str | None:
-    with st.spinner("Transcrevendo áudio..."):
+def _transcribe_chunk(
+    audio_bytes: bytes,
+    filename: str,
+    provider: str,
+    local_model_size: str,
+    openai_key: str,
+    openai_model: str,
+    show_spinner: bool = False,
+) -> str | None:
+    def _run() -> str | None:
         try:
             return transcribe_audio_bytes(
                 audio_bytes=audio_bytes,
@@ -556,8 +564,16 @@ def _transcribe_chunk(audio_bytes: bytes, filename: str, provider: str, local_mo
                 openai_model=openai_model,
             )
         except RuntimeError as exc:
-            st.error(str(exc))
+            st.session_state["last_voice_status"] = str(exc)
+            if show_spinner:
+                st.error(str(exc))
             return None
+
+    if not show_spinner:
+        return _run()
+
+    with st.spinner("Transcrevendo áudio..."):
+        return _run()
 
 
 def _handle_mic_audio_bytes(
@@ -745,6 +761,7 @@ def render_auto_transcription() -> None:
                 local_model_size=local_model_size,
                 openai_key=openai_key,
                 openai_model=openai_model,
+                show_spinner=True,
             )
             if transcript:
                 previous = st.session_state.get("transcript_input", "")
