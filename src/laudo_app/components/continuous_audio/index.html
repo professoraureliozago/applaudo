@@ -33,7 +33,6 @@
 
       let stream = null
       let recorder = null
-      let chunks = []
       let audioCtx = null
       let analyser = null
       let source = null
@@ -113,13 +112,15 @@
       }
 
       function startRecorder() {
-        chunks = []
-        recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+        const recorderChunks = []
+        const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined
+        recorder = new MediaRecorder(stream, options)
+        const recorderMimeType = recorder.mimeType || 'audio/webm'
         recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) chunks.push(e.data)
+          if (e.data && e.data.size > 0) recorderChunks.push(e.data)
         }
         recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: 'audio/webm' })
+          const blob = new Blob(recorderChunks, { type: recorderMimeType })
           if (blob.size < 1024) return
           blob.arrayBuffer()
             .then((buffer) => audioCtx.decodeAudioData(buffer))
@@ -130,7 +131,7 @@
             .catch(() => {
               const reader = new FileReader()
               reader.onloadend = () => {
-                setValue({ mime_type: 'audio/webm', data_url: reader.result, timestamp: Date.now() })
+                setValue({ mime_type: recorderMimeType, data_url: reader.result, timestamp: Date.now() })
               }
               reader.readAsDataURL(blob)
             })
