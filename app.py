@@ -9,12 +9,9 @@ import subprocess
 import sys
 import unicodedata
 from datetime import date, datetime
-from io import BytesIO
-from math import atan2, cos, pi, sin
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
@@ -57,6 +54,7 @@ from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
 from src.laudo_app.continuous_audio_component import render_continuous_audio
 from src.laudo_app.clickable_image_component import render_clickable_image
+from src.laudo_app.image_annotator_component import render_image_annotator
 from src.laudo_app.video_recorder_component import render_video_recorder
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
@@ -209,79 +207,6 @@ def _try_convert_video_to_mp4(input_path: Path) -> Path:
     return output_path
 
 
-def _load_annotation_font(size: int) -> ImageFont.ImageFont:
-    for font_name in ("arial.ttf", "calibri.ttf", "DejaVuSans.ttf"):
-        try:
-            return ImageFont.truetype(font_name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
-
-
-def _render_annotated_image_bytes(
-    image_path: Path,
-    *,
-    annotation_text: str,
-    arrow_tip_x: int,
-    arrow_tip_y: int,
-    text_x: int,
-    text_y: int,
-    color_hex: str,
-    line_width: int,
-    font_size: int,
-) -> bytes:
-    with Image.open(image_path) as original:
-        image = original.convert("RGBA")
-
-    width, height = image.size
-    tip = (int(width * arrow_tip_x / 100), int(height * arrow_tip_y / 100))
-    text_anchor = (int(width * text_x / 100), int(height * text_y / 100))
-    draw = ImageDraw.Draw(image)
-    color = color_hex
-    font = _load_annotation_font(font_size)
-    label = annotation_text.strip()
-
-    if label:
-        padding = max(6, font_size // 3)
-        bbox = draw.textbbox((0, 0), label, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        box_left = max(0, min(text_anchor[0], width - text_width - padding * 2))
-        box_top = max(0, min(text_anchor[1], height - text_height - padding * 2))
-        box_right = box_left + text_width + padding * 2
-        box_bottom = box_top + text_height + padding * 2
-        draw.rounded_rectangle(
-            (box_left, box_top, box_right, box_bottom),
-            radius=max(4, padding // 2),
-            fill=(0, 0, 0, 175),
-        )
-        draw.text((box_left + padding, box_top + padding), label, fill="#ffffff", font=font)
-        line_start = (box_right, (box_top + box_bottom) // 2) if tip[0] >= box_right else (box_left, (box_top + box_bottom) // 2)
-    else:
-        line_start = text_anchor
-
-    draw.line((line_start, tip), fill=color, width=line_width)
-    angle = atan2(tip[1] - line_start[1], tip[0] - line_start[0])
-    head_len = max(16, line_width * 5)
-    head_angle = pi / 7
-    left = (
-        tip[0] - head_len * cos(angle - head_angle),
-        tip[1] - head_len * sin(angle - head_angle),
-    )
-    right = (
-        tip[0] - head_len * cos(angle + head_angle),
-        tip[1] - head_len * sin(angle + head_angle),
-    )
-    draw.polygon([tip, left, right], fill=color)
-
-    output = BytesIO()
-    if image_path.suffix.lower() == ".png":
-        image.save(output, format="PNG")
-    else:
-        image.convert("RGB").save(output, format="JPEG", quality=95)
-    return output.getvalue()
-
-
 def _render_image_annotation_editor(exam_id: int | None) -> None:
     editing_path = st.session_state.get("editing_image_path")
     if not editing_path:
@@ -301,42 +226,59 @@ def _render_image_annotation_editor(exam_id: int | None) -> None:
     if st.session_state.get("annotation_active_image") != active_key:
         st.session_state["annotation_active_image"] = active_key
         st.session_state["annotation_text"] = ""
-        st.session_state["annotation_arrow_tip_x"] = 68
-        st.session_state["annotation_arrow_tip_y"] = 48
-        st.session_state["annotation_text_x"] = 16
-        st.session_state["annotation_text_y"] = 18
+        st.session_state["annotation_start_x"] = 18.0
+        st.session_state["annotation_start_y"] = 22.0
+        st.session_state["annotation_end_x"] = 70.0
+        st.session_state["annotation_end_y"] = 52.0
         st.session_state["annotation_color"] = "Vermelho"
         st.session_state["annotation_width"] = 6
         st.session_state["annotation_font_size"] = 28
+        st.session_state["annotation_data_url"] = ""
 
-    preview_col, control_col = st.columns([2, 1])
+    canvas_col, control_col = st.columns([2, 1])
     with control_col:
         annotation_text = st.text_input("Texto", key="annotation_text", placeholder="Ex.: pólipo")
         color_name = st.selectbox("Cor da seta", list(ANNOTATION_COLORS), key="annotation_color")
         line_width = st.slider("Espessura", min_value=2, max_value=16, key="annotation_width")
         font_size = st.slider("Tamanho do texto", min_value=14, max_value=56, key="annotation_font_size")
-        arrow_tip_x = st.slider("Ponta X (%)", min_value=0, max_value=100, key="annotation_arrow_tip_x")
-        arrow_tip_y = st.slider("Ponta Y (%)", min_value=0, max_value=100, key="annotation_arrow_tip_y")
-        text_x = st.slider("Texto X (%)", min_value=0, max_value=100, key="annotation_text_x")
-        text_y = st.slider("Texto Y (%)", min_value=0, max_value=100, key="annotation_text_y")
+        st.caption("Arraste as bolinhas na imagem: a branca move o texto/início da seta; a colorida move a ponta.")
 
-    preview_bytes = _render_annotated_image_bytes(
-        image_path,
-        annotation_text=annotation_text,
-        arrow_tip_x=arrow_tip_x,
-        arrow_tip_y=arrow_tip_y,
-        text_x=text_x,
-        text_y=text_y,
-        color_hex=ANNOTATION_COLORS[color_name],
-        line_width=line_width,
-        font_size=font_size,
-    )
-    with preview_col:
-        st.image(preview_bytes, use_container_width=True)
+    with canvas_col:
+        annotation_result = render_image_annotator(
+            image_path,
+            key=f"annotator_{image_path.name}",
+            annotation_text=annotation_text,
+            color_hex=ANNOTATION_COLORS[color_name],
+            line_width=line_width,
+            font_size=font_size,
+            start_x=float(st.session_state.get("annotation_start_x", 18.0)),
+            start_y=float(st.session_state.get("annotation_start_y", 22.0)),
+            end_x=float(st.session_state.get("annotation_end_x", 70.0)),
+            end_y=float(st.session_state.get("annotation_end_y", 52.0)),
+        )
+
+    if annotation_result:
+        for source, target in (
+            ("start_x", "annotation_start_x"),
+            ("start_y", "annotation_start_y"),
+            ("end_x", "annotation_end_x"),
+            ("end_y", "annotation_end_y"),
+        ):
+            value = annotation_result.get(source)
+            if isinstance(value, (int, float)):
+                st.session_state[target] = float(value)
+        data_url = annotation_result.get("data_url")
+        if isinstance(data_url, str) and "," in data_url:
+            st.session_state["annotation_data_url"] = data_url
 
     save_col, cancel_col = st.columns(2)
     if save_col.button("Salvar imagem anotada", use_container_width=True):
-        image_path.write_bytes(preview_bytes)
+        data_url = st.session_state.get("annotation_data_url")
+        if not isinstance(data_url, str) or "," not in data_url:
+            st.error("Aguarde a prévia da imagem carregar antes de salvar.")
+            return
+        _, encoded = data_url.split(",", 1)
+        image_path.write_bytes(base64.b64decode(encoded))
         set_image_caption(image_path, get_image_caption(image_path, exam_id=exam_id), exam_id=exam_id)
         st.session_state["editing_image_path"] = None
         st.success("Imagem anotada salva.")

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Annotator</title>
+    <style>
+      body {
+        margin: 0;
+        background: transparent;
+        font-family: sans-serif;
+      }
+
+      .wrap {
+        width: 100%;
+      }
+
+      canvas {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 7px;
+        background: #111;
+        cursor: grab;
+        touch-action: none;
+      }
+
+      canvas.dragging {
+        cursor: grabbing;
+      }
+
+      .hint {
+        margin-top: 6px;
+        color: #888;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <canvas id="canvas"></canvas>
+      <div class="hint">Arraste as bolinhas para posicionar, alongar ou encurtar a seta.</div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("canvas")
+      const ctx = canvas.getContext("2d")
+      const image = new Image()
+
+      let args = {}
+      let imageKey = ""
+      let start = { x: 18, y: 22 }
+      let end = { x: 70, y: 52 }
+      let dragging = null
+      let lastSent = 0
+
+      function postToStreamlit(type, payload = {}) {
+        window.parent.postMessage(
+          {
+            isStreamlitMessage: true,
+            type,
+            ...payload,
+          },
+          "*",
+        )
+      }
+
+      function setComponentReady() {
+        postToStreamlit("streamlit:componentReady", { apiVersion: 1 })
+      }
+
+      function setFrameHeight(height) {
+        postToStreamlit("streamlit:setFrameHeight", { height })
+      }
+
+      function setComponentValue(value) {
+        postToStreamlit("streamlit:setComponentValue", { value })
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value))
+      }
+
+      function fitFrame() {
+        const rect = canvas.getBoundingClientRect()
+        const ratio = image.naturalHeight && image.naturalWidth ? image.naturalHeight / image.naturalWidth : 0.6
+        setFrameHeight(Math.ceil(rect.width * ratio + 28))
+      }
+
+      function pctToPoint(point) {
+        return {
+          x: (point.x / 100) * canvas.width,
+          y: (point.y / 100) * canvas.height,
+        }
+      }
+
+      function clientToPct(event) {
+        const rect = canvas.getBoundingClientRect()
+        const clientX = event.clientX ?? event.touches?.[0]?.clientX
+        const clientY = event.clientY ?? event.touches?.[0]?.clientY
+        return {
+          x: clamp(((clientX - rect.left) / rect.width) * 100, 0, 100),
+          y: clamp(((clientY - rect.top) / rect.height) * 100, 0, 100),
+        }
+      }
+
+      function distance(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y)
+      }
+
+      function fontSizePx() {
+        const base = Number(args.font_size || 28)
+        const scale = canvas.width / 960
+        return Math.max(12, Math.round(base * scale))
+      }
+
+      function lineWidthPx() {
+        const base = Number(args.line_width || 6)
+        const scale = canvas.width / 960
+        return Math.max(2, Math.round(base * scale))
+      }
+
+      function drawLabel(text, anchor, fontSize) {
+        if (!text) {
+          return anchor
+        }
+
+        ctx.font = `600 ${fontSize}px Arial, sans-serif`
+        ctx.textBaseline = "top"
+        const padding = Math.max(6, Math.round(fontSize / 3))
+        const metrics = ctx.measureText(text)
+        const textWidth = metrics.width
+        const textHeight = fontSize * 1.25
+        let left = anchor.x
+        let top = anchor.y
+        left = clamp(left, 0, canvas.width - textWidth - padding * 2)
+        top = clamp(top, 0, canvas.height - textHeight - padding * 2)
+        const right = left + textWidth + padding * 2
+        const bottom = top + textHeight + padding * 2
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.68)"
+        ctx.beginPath()
+        ctx.roundRect(left, top, right - left, bottom - top, Math.max(4, padding / 2))
+        ctx.fill()
+        ctx.fillStyle = "#fff"
+        ctx.fillText(text, left + padding, top + padding)
+
+        return end.x >= start.x
+          ? { x: right, y: (top + bottom) / 2 }
+          : { x: left, y: (top + bottom) / 2 }
+      }
+
+      function drawArrow(from, to, color, width) {
+        const angle = Math.atan2(to.y - from.y, to.x - from.x)
+        const headLen = Math.max(16, width * 5)
+        const headAngle = Math.PI / 7
+
+        ctx.strokeStyle = color
+        ctx.fillStyle = color
+        ctx.lineWidth = width
+        ctx.lineCap = "round"
+        ctx.beginPath()
+        ctx.moveTo(from.x, from.y)
+        ctx.lineTo(to.x, to.y)
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.moveTo(to.x, to.y)
+        ctx.lineTo(to.x - headLen * Math.cos(angle - headAngle), to.y - headLen * Math.sin(angle - headAngle))
+        ctx.lineTo(to.x - headLen * Math.cos(angle + headAngle), to.y - headLen * Math.sin(angle + headAngle))
+        ctx.closePath()
+        ctx.fill()
+      }
+
+      function drawHandle(point, fill, stroke) {
+        const radius = Math.max(8, lineWidthPx() * 1.7)
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+        ctx.fillStyle = fill
+        ctx.fill()
+        ctx.lineWidth = 3
+        ctx.strokeStyle = stroke
+        ctx.stroke()
+      }
+
+      function draw() {
+        if (!image.complete || !image.naturalWidth) {
+          return
+        }
+
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        const from = pctToPoint(start)
+        const to = pctToPoint(end)
+        const text = (args.annotation_text || "").trim()
+        const color = args.color_hex || "#ff2d2d"
+        const width = lineWidthPx()
+        const fontSize = fontSizePx()
+        const lineStart = drawLabel(text, from, fontSize)
+        drawArrow(lineStart, to, color, width)
+        drawHandle(from, "#fff", color)
+        drawHandle(to, color, "#fff")
+        fitFrame()
+      }
+
+      function exportValue(force = false) {
+        const now = Date.now()
+        if (!force && now - lastSent < 120) {
+          return
+        }
+        lastSent = now
+        draw()
+        setComponentValue({
+          start_x: start.x,
+          start_y: start.y,
+          end_x: end.x,
+          end_y: end.y,
+          data_url: canvas.toDataURL(args.mime_type || "image/jpeg", 0.95),
+        })
+      }
+
+      function selectHandle(event) {
+        const pct = clientToPct(event)
+        const px = pctToPoint(pct)
+        const startPx = pctToPoint(start)
+        const endPx = pctToPoint(end)
+        const threshold = Math.max(24, canvas.width * 0.035)
+        if (distance(px, startPx) <= threshold) {
+          return "start"
+        }
+        if (distance(px, endPx) <= threshold) {
+          return "end"
+        }
+        return distance(px, endPx) < distance(px, startPx) ? "end" : "start"
+      }
+
+      function onPointerDown(event) {
+        event.preventDefault()
+        dragging = selectHandle(event)
+        canvas.classList.add("dragging")
+      }
+
+      function onPointerMove(event) {
+        if (!dragging) {
+          return
+        }
+        event.preventDefault()
+        const pct = clientToPct(event)
+        if (dragging === "start") {
+          start = pct
+        } else {
+          end = pct
+        }
+        draw()
+      }
+
+      function onPointerUp(event) {
+        if (!dragging) {
+          return
+        }
+        event.preventDefault()
+        dragging = null
+        canvas.classList.remove("dragging")
+        exportValue(true)
+      }
+
+      function onRender(newArgs) {
+        args = newArgs || {}
+        const nextImageKey = args.image_key || args.data_url || ""
+        if (nextImageKey !== imageKey) {
+          imageKey = nextImageKey
+          start = {
+            x: Number(args.start_x ?? 18),
+            y: Number(args.start_y ?? 22),
+          }
+          end = {
+            x: Number(args.end_x ?? 70),
+            y: Number(args.end_y ?? 52),
+          }
+          image.onload = () => {
+            draw()
+            exportValue(true)
+          }
+          image.src = args.data_url || ""
+          return
+        }
+        draw()
+        exportValue()
+      }
+
+      window.addEventListener("message", (event) => {
+        const message = event.data
+        if (!message || message.type !== "streamlit:render") {
+          return
+        }
+        onRender(message.args || {})
+      })
+
+      canvas.addEventListener("pointerdown", onPointerDown)
+      window.addEventListener("pointermove", onPointerMove)
+      window.addEventListener("pointerup", onPointerUp)
+      window.addEventListener("resize", () => {
+        draw()
+        fitFrame()
+      })
+
+      setComponentReady()
+      setFrameHeight(360)
+    </script>
+  </body>
+</html>
