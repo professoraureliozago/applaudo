@@ -39,6 +39,7 @@
       let tick = null
       let startedAt = 0
       let lastVoiceAt = 0
+      let recorderStarting = false
       let isRunning = false
       let currentDeviceId = ''
       let recognition = null
@@ -109,10 +110,17 @@
       }
 
       function stopRecorder() {
-        if (recorder && recorder.state === 'recording') recorder.stop()
+        if (recorder && recorder.state === 'recording') {
+          try {
+            recorder.requestData()
+          } catch (_) {}
+          recorder.stop()
+        }
       }
 
       function startRecorder() {
+        if (!stream || recorderStarting || (recorder && recorder.state === 'recording')) return
+        recorderStarting = true
         const recorderChunks = []
         const options = MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : undefined
         recorder = new MediaRecorder(stream, options)
@@ -121,37 +129,49 @@
           if (e.data && e.data.size > 0) recorderChunks.push(e.data)
         }
         recorder.onstop = () => {
+          recorderStarting = false
           const blob = new Blob(recorderChunks, { type: recorderMimeType })
-          if (blob.size < 1024) return
-          blob.arrayBuffer()
-            .then((buffer) => audioCtx.decodeAudioData(buffer))
-            .then((audioBuffer) => {
-              const wavDataUrl = audioBufferToWavDataUrl(audioBuffer)
-              setValue({ mime_type: 'audio/wav', data_url: wavDataUrl, timestamp: Date.now() })
-            })
-            .catch(() => {
-              const reader = new FileReader()
-              reader.onloadend = () => {
-                setValue({ mime_type: recorderMimeType, data_url: reader.result, timestamp: Date.now() })
-              }
-              reader.readAsDataURL(blob)
-            })
+          if (blob.size >= 4096) {
+            blob.arrayBuffer()
+              .then((buffer) => audioCtx.decodeAudioData(buffer))
+              .then((audioBuffer) => {
+                const wavDataUrl = audioBufferToWavDataUrl(audioBuffer)
+                setValue({ mime_type: 'audio/wav', data_url: wavDataUrl, timestamp: Date.now(), size: blob.size })
+              })
+              .catch(() => {
+                const reader = new FileReader()
+                reader.onloadend = () => {
+                  setValue({ mime_type: recorderMimeType, data_url: reader.result, timestamp: Date.now(), size: blob.size })
+                }
+                reader.readAsDataURL(blob)
+              })
+          }
+          if (isRunning) {
+            setTimeout(startRecorder, 80)
+          }
         }
-        recorder.start(250)
+        recorder.onerror = () => {
+          recorderStarting = false
+          if (isRunning) {
+            setTimeout(startRecorder, 250)
+          }
+        }
+        recorder.start(500)
         startedAt = Date.now()
         lastVoiceAt = Date.now()
+        recorderStarting = false
       }
 
       function tickVAD() {
-        if (!isRunning) return
+        if (!isRunning || !recorder || recorder.state !== 'recording') return
         const now = Date.now()
         const l = level()
         if (l >= vadThreshold) lastVoiceAt = now
         const duration = now - startedAt
         const silence = now - lastVoiceAt
-        if (duration >= chunkMs || silence >= silenceMs) {
+        const minDuration = Math.max(1800, Math.min(chunkMs - 500, 2500))
+        if (duration >= chunkMs || (duration >= minDuration && silence >= silenceMs)) {
           stopRecorder()
-          startRecorder()
         }
       }
 

@@ -571,6 +571,9 @@ def _handle_mic_audio_bytes(
 ) -> None:
     if not audio_bytes:
         return
+    if len(audio_bytes) < 4096:
+        st.session_state["last_voice_status"] = "Trecho de áudio muito curto; aguardando mais fala."
+        return
 
     chunk_hash = hashlib.md5(audio_bytes).hexdigest()
     if not force and chunk_hash == st.session_state.get("last_mic_chunk_hash"):
