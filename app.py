@@ -9,9 +9,12 @@ import subprocess
 import sys
 import unicodedata
 from datetime import date, datetime
+from io import BytesIO
+from math import atan2, cos, pi, sin
 from pathlib import Path
 from typing import Any
 
+from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
@@ -53,12 +56,21 @@ from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
 from src.laudo_app.continuous_audio_component import render_continuous_audio
+from src.laudo_app.clickable_image_component import render_clickable_image
 from src.laudo_app.video_recorder_component import render_video_recorder
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
 TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
 TEMPLATES_BACKUP_PATH = Path("templates/colonoscopia_templates.backup.json")
 TEMPLATES_DEFAULT_PATH = Path("templates/colonoscopia_templates.default.json")
+ANNOTATION_COLORS = {
+    "Vermelho": "#ff2d2d",
+    "Amarelo": "#ffd43b",
+    "Verde": "#2fce68",
+    "Azul": "#3b82f6",
+    "Branco": "#ffffff",
+    "Preto": "#111111",
+}
 
 
 def inject_sidebar_button_style() -> None:
@@ -195,6 +207,143 @@ def _try_convert_video_to_mp4(input_path: Path) -> Path:
         return input_path
     input_path.unlink(missing_ok=True)
     return output_path
+
+
+def _load_annotation_font(size: int) -> ImageFont.ImageFont:
+    for font_name in ("arial.ttf", "calibri.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(font_name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _render_annotated_image_bytes(
+    image_path: Path,
+    *,
+    annotation_text: str,
+    arrow_tip_x: int,
+    arrow_tip_y: int,
+    text_x: int,
+    text_y: int,
+    color_hex: str,
+    line_width: int,
+    font_size: int,
+) -> bytes:
+    with Image.open(image_path) as original:
+        image = original.convert("RGBA")
+
+    width, height = image.size
+    tip = (int(width * arrow_tip_x / 100), int(height * arrow_tip_y / 100))
+    text_anchor = (int(width * text_x / 100), int(height * text_y / 100))
+    draw = ImageDraw.Draw(image)
+    color = color_hex
+    font = _load_annotation_font(font_size)
+    label = annotation_text.strip()
+
+    if label:
+        padding = max(6, font_size // 3)
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        box_left = max(0, min(text_anchor[0], width - text_width - padding * 2))
+        box_top = max(0, min(text_anchor[1], height - text_height - padding * 2))
+        box_right = box_left + text_width + padding * 2
+        box_bottom = box_top + text_height + padding * 2
+        draw.rounded_rectangle(
+            (box_left, box_top, box_right, box_bottom),
+            radius=max(4, padding // 2),
+            fill=(0, 0, 0, 175),
+        )
+        draw.text((box_left + padding, box_top + padding), label, fill="#ffffff", font=font)
+        line_start = (box_right, (box_top + box_bottom) // 2) if tip[0] >= box_right else (box_left, (box_top + box_bottom) // 2)
+    else:
+        line_start = text_anchor
+
+    draw.line((line_start, tip), fill=color, width=line_width)
+    angle = atan2(tip[1] - line_start[1], tip[0] - line_start[0])
+    head_len = max(16, line_width * 5)
+    head_angle = pi / 7
+    left = (
+        tip[0] - head_len * cos(angle - head_angle),
+        tip[1] - head_len * sin(angle - head_angle),
+    )
+    right = (
+        tip[0] - head_len * cos(angle + head_angle),
+        tip[1] - head_len * sin(angle + head_angle),
+    )
+    draw.polygon([tip, left, right], fill=color)
+
+    output = BytesIO()
+    if image_path.suffix.lower() == ".png":
+        image.save(output, format="PNG")
+    else:
+        image.convert("RGB").save(output, format="JPEG", quality=95)
+    return output.getvalue()
+
+
+def _render_image_annotation_editor(exam_id: int | None) -> None:
+    editing_path = st.session_state.get("editing_image_path")
+    if not editing_path:
+        return
+
+    image_path = Path(editing_path)
+    if not image_path.exists():
+        st.warning("A imagem selecionada para edição não existe mais.")
+        st.session_state["editing_image_path"] = None
+        return
+
+    st.markdown("---")
+    st.markdown("### Editor de imagem")
+    st.caption(image_path.name)
+
+    active_key = str(image_path)
+    if st.session_state.get("annotation_active_image") != active_key:
+        st.session_state["annotation_active_image"] = active_key
+        st.session_state["annotation_text"] = ""
+        st.session_state["annotation_arrow_tip_x"] = 68
+        st.session_state["annotation_arrow_tip_y"] = 48
+        st.session_state["annotation_text_x"] = 16
+        st.session_state["annotation_text_y"] = 18
+        st.session_state["annotation_color"] = "Vermelho"
+        st.session_state["annotation_width"] = 6
+        st.session_state["annotation_font_size"] = 28
+
+    preview_col, control_col = st.columns([2, 1])
+    with control_col:
+        annotation_text = st.text_input("Texto", key="annotation_text", placeholder="Ex.: pólipo")
+        color_name = st.selectbox("Cor da seta", list(ANNOTATION_COLORS), key="annotation_color")
+        line_width = st.slider("Espessura", min_value=2, max_value=16, key="annotation_width")
+        font_size = st.slider("Tamanho do texto", min_value=14, max_value=56, key="annotation_font_size")
+        arrow_tip_x = st.slider("Ponta X (%)", min_value=0, max_value=100, key="annotation_arrow_tip_x")
+        arrow_tip_y = st.slider("Ponta Y (%)", min_value=0, max_value=100, key="annotation_arrow_tip_y")
+        text_x = st.slider("Texto X (%)", min_value=0, max_value=100, key="annotation_text_x")
+        text_y = st.slider("Texto Y (%)", min_value=0, max_value=100, key="annotation_text_y")
+
+    preview_bytes = _render_annotated_image_bytes(
+        image_path,
+        annotation_text=annotation_text,
+        arrow_tip_x=arrow_tip_x,
+        arrow_tip_y=arrow_tip_y,
+        text_x=text_x,
+        text_y=text_y,
+        color_hex=ANNOTATION_COLORS[color_name],
+        line_width=line_width,
+        font_size=font_size,
+    )
+    with preview_col:
+        st.image(preview_bytes, use_container_width=True)
+
+    save_col, cancel_col = st.columns(2)
+    if save_col.button("Salvar imagem anotada", use_container_width=True):
+        image_path.write_bytes(preview_bytes)
+        set_image_caption(image_path, get_image_caption(image_path, exam_id=exam_id), exam_id=exam_id)
+        st.session_state["editing_image_path"] = None
+        st.success("Imagem anotada salva.")
+        st.rerun()
+    if cancel_col.button("Cancelar edição", use_container_width=True):
+        st.session_state["editing_image_path"] = None
+        st.rerun()
 
 
 def _clone_exam_media(source_exam_id: int, target_exam_id: int) -> list[str]:
@@ -657,7 +806,13 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
         for idx, img in enumerate(images):
             col = cols[idx % 4]
-            col.image(str(img), use_container_width=True)
+            with col:
+                clicked_at = render_clickable_image(img, key=f"click_img_{exam_id}_{img.name}")
+            last_click_key = f"last_click_img_{exam_id}_{img.name}"
+            if clicked_at and clicked_at != st.session_state.get(last_click_key):
+                st.session_state[last_click_key] = clicked_at
+                st.session_state["editing_image_path"] = str(img)
+                st.rerun()
             current_caption = get_image_caption(img, exam_id=exam_id)
             new_caption = col.text_input("Legenda", value=current_caption, key=f"cap_{exam_id}_{img.name}")
             if new_caption != current_caption:
@@ -679,6 +834,7 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
         st.session_state["selected_gallery_paths"] = selected_paths
 
+    _render_image_annotation_editor(exam_id)
 
     st.markdown("### Filmagens salvas")
     video_dir = Path("captured_videos") / (f"exam_{exam_id}" if exam_id else "unassigned")
@@ -771,6 +927,7 @@ def render_app() -> None:
     st.session_state.setdefault("last_continuous_audio_ts", 0)
     st.session_state.setdefault("audio_metrics", {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0})
     st.session_state.setdefault("pdf_preview_exam_id", None)
+    st.session_state.setdefault("editing_image_path", None)
     if not st.session_state.get("cleaned_unassigned_once"):
         clear_unassigned_images()
         draft_video_dir = Path("captured_videos") / "unassigned"

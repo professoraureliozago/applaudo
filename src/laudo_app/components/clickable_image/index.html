@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clickable Image</title>
+    <style>
+      body {
+        margin: 0;
+        background: transparent;
+        font-family: sans-serif;
+      }
+
+      button {
+        appearance: none;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        display: block;
+      }
+
+      img {
+        width: 100%;
+        display: block;
+        border-radius: 7px;
+      }
+
+      button:focus-visible img {
+        outline: 2px solid #ff4b4b;
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="button" type="button" title="Editar imagem">
+      <img id="image" alt="Imagem capturada" />
+    </button>
+
+    <script>
+      const button = document.getElementById("button")
+      const image = document.getElementById("image")
+
+      function postToStreamlit(type, payload = {}) {
+        window.parent.postMessage(
+          {
+            isStreamlitMessage: true,
+            type,
+            ...payload,
+          },
+          "*",
+        )
+      }
+
+      function setComponentReady() {
+        postToStreamlit("streamlit:componentReady", { apiVersion: 1 })
+      }
+
+      function setFrameHeight(height) {
+        postToStreamlit("streamlit:setFrameHeight", { height })
+      }
+
+      function setComponentValue(value) {
+        postToStreamlit("streamlit:setComponentValue", { value })
+      }
+
+      function updateHeight() {
+        setFrameHeight(Math.ceil(image.getBoundingClientRect().height || 180))
+      }
+
+      window.addEventListener("message", (event) => {
+        const message = event.data
+        if (!message || message.type !== "streamlit:render") {
+          return
+        }
+
+        image.src = message.args?.data_url || ""
+        updateHeight()
+      })
+
+      image.addEventListener("load", updateHeight)
+      window.addEventListener("resize", updateHeight)
+      button.addEventListener("click", () => {
+        setComponentValue({ clicked_at: Date.now() })
+      })
+
+      setComponentReady()
+      setFrameHeight(180)
+    </script>
+  </body>
+</html>
