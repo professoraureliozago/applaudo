@@ -22,7 +22,7 @@ def test_load_selected_images(tmp_path: Path):
 
     data = image_store.load_selected_images_with_captions([str(file_path), str(tmp_path / "missing.jpg")])
 
-    assert data == [(b"data", "imagem do exame")]
+    assert data == [(b"data", "")]
 
 
 def test_infer_caption_from_text():

@@ -62,7 +62,7 @@ def save_captured_image(image_bytes: bytes, suffix: str = ".jpg", caption: str =
     path.write_bytes(image_bytes)
 
     metadata = _load_metadata(exam_id)
-    metadata[path.name] = caption.strip() or "imagem do exame"
+    metadata[path.name] = caption.strip()
     _save_metadata(metadata, exam_id)
 
     return path
@@ -79,7 +79,7 @@ def list_captured_images(exam_id: int | None = None) -> list[Path]:
 
 def get_image_caption(path: Path, exam_id: int | None = None) -> str:
     metadata = _load_metadata(exam_id)
-    return metadata.get(path.name, "imagem do exame")
+    return metadata.get(path.name, "")
 
 
 def load_selected_images_with_captions(paths: list[str], exam_id: int | None = None) -> list[tuple[bytes, str]]:
@@ -106,7 +106,7 @@ def reassign_images_to_exam(paths: list[str], exam_id: int) -> list[Path]:
             suffix = new_path.suffix
             new_path = destination / f"{stem}_{datetime.now().strftime('%H%M%S%f')}{suffix}"
         shutil.move(str(path), str(new_path))
-        caption = src_metadata.pop(path.name, "imagem do exame")
+        caption = src_metadata.pop(path.name, "")
         dst_metadata[new_path.name] = caption
         moved.append(new_path)
 
@@ -117,7 +117,7 @@ def reassign_images_to_exam(paths: list[str], exam_id: int) -> list[Path]:
 
 def set_image_caption(path: Path, caption: str, exam_id: int | None = None) -> None:
     metadata = _load_metadata(exam_id)
-    metadata[path.name] = caption.strip() or "imagem do exame"
+    metadata[path.name] = caption.strip()
     _save_metadata(metadata, exam_id)
 
 

@@ -788,12 +788,10 @@ def render_image_capture_tab(exam_id: int | None) -> None:
         else:
             snapshot_bytes = b""
         if snapshot_bytes:
-            context_text = st.session_state.get("transcript_input", "") or st.session_state.get("last_voice_transcript", "")
-            auto_caption = infer_caption_from_text(context_text)
-            saved = save_captured_image(snapshot_bytes, suffix=".jpg", caption=auto_caption, exam_id=exam_id)
+            saved = save_captured_image(snapshot_bytes, suffix=".jpg", caption="", exam_id=exam_id)
             if exam_id:
-                add_exam_image(exam_id, str(saved), auto_caption)
-            st.success(f"Snapshot salvo por clique: {saved.name} ({auto_caption})")
+                add_exam_image(exam_id, str(saved), "")
+            st.success(f"Snapshot salvo por clique: {saved.name}")
 
     st.markdown("#### Filmagem do exame")
     st.caption("Clique em iniciar/parar no gravador abaixo para capturar a filmagem do exame.")
