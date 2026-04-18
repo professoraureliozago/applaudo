@@ -9,9 +9,12 @@ import subprocess
 import sys
 import unicodedata
 from datetime import date, datetime
+from io import BytesIO
+from math import atan2, cos, pi, sin
 from pathlib import Path
 from typing import Any
 
+from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
@@ -207,6 +210,78 @@ def _try_convert_video_to_mp4(input_path: Path) -> Path:
     return output_path
 
 
+def _load_annotation_font(size: int) -> ImageFont.ImageFont:
+    for font_name in ("arial.ttf", "calibri.ttf", "DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(font_name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _render_annotated_image_bytes(
+    image_path: Path,
+    *,
+    annotation_text: str,
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+    color_hex: str,
+    line_width: int,
+    font_size: int,
+) -> bytes:
+    with Image.open(image_path) as original:
+        image = original.convert("RGBA")
+
+    width, height = image.size
+    start = (int(width * start_x / 100), int(height * start_y / 100))
+    end = (int(width * end_x / 100), int(height * end_y / 100))
+    draw = ImageDraw.Draw(image)
+    font = _load_annotation_font(font_size)
+    label = annotation_text.strip()
+
+    if label:
+        padding = max(6, font_size // 3)
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        box_left = max(0, min(start[0], width - text_width - padding * 2))
+        box_top = max(0, min(start[1], height - text_height - padding * 2))
+        box_right = box_left + text_width + padding * 2
+        box_bottom = box_top + text_height + padding * 2
+        draw.rounded_rectangle(
+            (box_left, box_top, box_right, box_bottom),
+            radius=max(4, padding // 2),
+            fill=(0, 0, 0, 175),
+        )
+        draw.text((box_left + padding, box_top + padding), label, fill="#ffffff", font=font)
+        line_start = (box_right, (box_top + box_bottom) // 2) if end[0] >= start[0] else (box_left, (box_top + box_bottom) // 2)
+    else:
+        line_start = start
+
+    draw.line((line_start, end), fill=color_hex, width=line_width)
+    angle = atan2(end[1] - line_start[1], end[0] - line_start[0])
+    head_len = max(16, line_width * 5)
+    head_angle = pi / 7
+    left = (
+        end[0] - head_len * cos(angle - head_angle),
+        end[1] - head_len * sin(angle - head_angle),
+    )
+    right = (
+        end[0] - head_len * cos(angle + head_angle),
+        end[1] - head_len * sin(angle + head_angle),
+    )
+    draw.polygon([end, left, right], fill=color_hex)
+
+    output = BytesIO()
+    if image_path.suffix.lower() == ".png":
+        image.save(output, format="PNG")
+    else:
+        image.convert("RGB").save(output, format="JPEG", quality=95)
+    return output.getvalue()
+
+
 def _render_image_annotation_editor(exam_id: int | None) -> None:
     editing_path = st.session_state.get("editing_image_path")
     if not editing_path:
@@ -233,7 +308,6 @@ def _render_image_annotation_editor(exam_id: int | None) -> None:
         st.session_state["annotation_color"] = "Vermelho"
         st.session_state["annotation_width"] = 6
         st.session_state["annotation_font_size"] = 28
-        st.session_state["annotation_data_url"] = ""
 
     canvas_col, control_col = st.columns([2, 1])
     with control_col:
@@ -267,18 +341,21 @@ def _render_image_annotation_editor(exam_id: int | None) -> None:
             value = annotation_result.get(source)
             if isinstance(value, (int, float)):
                 st.session_state[target] = float(value)
-        data_url = annotation_result.get("data_url")
-        if isinstance(data_url, str) and "," in data_url:
-            st.session_state["annotation_data_url"] = data_url
 
     save_col, cancel_col = st.columns(2)
     if save_col.button("Salvar imagem anotada", use_container_width=True):
-        data_url = st.session_state.get("annotation_data_url")
-        if not isinstance(data_url, str) or "," not in data_url:
-            st.error("Aguarde a prévia da imagem carregar antes de salvar.")
-            return
-        _, encoded = data_url.split(",", 1)
-        image_path.write_bytes(base64.b64decode(encoded))
+        preview_bytes = _render_annotated_image_bytes(
+            image_path,
+            annotation_text=annotation_text,
+            start_x=float(st.session_state.get("annotation_start_x", 18.0)),
+            start_y=float(st.session_state.get("annotation_start_y", 22.0)),
+            end_x=float(st.session_state.get("annotation_end_x", 70.0)),
+            end_y=float(st.session_state.get("annotation_end_y", 52.0)),
+            color_hex=ANNOTATION_COLORS[color_name],
+            line_width=line_width,
+            font_size=font_size,
+        )
+        image_path.write_bytes(preview_bytes)
         set_image_caption(image_path, get_image_caption(image_path, exam_id=exam_id), exam_id=exam_id)
         st.session_state["editing_image_path"] = None
         st.success("Imagem anotada salva.")
@@ -594,7 +671,7 @@ def render_auto_transcription() -> None:
             st.session_state["last_continuous_audio_ts"] = capture_ts
             if transcript_text.strip():
                 _apply_transcript_text(transcript_text)
-            elif provider == "openai" and isinstance(audio_bytes, (bytes, bytearray)) and len(audio_bytes) > 0:
+            elif isinstance(audio_bytes, (bytes, bytearray)) and len(audio_bytes) > 0:
                 suffix = ".webm" if "webm" in mime_type else ".wav"
                 _handle_mic_audio_bytes(
                     audio_bytes=bytes(audio_bytes),

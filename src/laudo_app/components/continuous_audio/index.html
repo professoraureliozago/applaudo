@@ -43,6 +43,7 @@
       let isRunning = false
       let currentDeviceId = ''
       let recognition = null
+      const RUNNING_KEY = 'laudo_continuous_audio_running'
 
       let chunkMs = 3500
       let silenceMs = 1100
@@ -180,6 +181,7 @@
           await ensureStream()
           if (audioCtx?.state === 'suspended') await audioCtx.resume()
           isRunning = true
+          localStorage.setItem(RUNNING_KEY, '1')
           startBtn.disabled = true
           stopBtn.disabled = false
           setStatus('Captura contínua ativa (VAD).')
@@ -197,6 +199,7 @@
 
       function stopContinuous() {
         isRunning = false
+        localStorage.setItem(RUNNING_KEY, '0')
         startBtn.disabled = false
         stopBtn.disabled = true
         if (tick) clearInterval(tick)
@@ -263,6 +266,9 @@
         setHeight(110)
         try {
           await ensureStream(false)
+          if (localStorage.getItem(RUNNING_KEY) === '1' && !isRunning) {
+            await startContinuous()
+          }
         } catch (err) {
           setStatus(`Permita acesso ao microfone para usar o modo contínuo: ${err?.message || err}`, true)
         }

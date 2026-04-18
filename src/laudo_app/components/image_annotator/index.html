@@ -212,13 +212,11 @@
           return
         }
         lastSent = now
-        draw()
         setComponentValue({
           start_x: start.x,
           start_y: start.y,
           end_x: end.x,
           end_y: end.y,
-          data_url: canvas.toDataURL(args.mime_type || "image/jpeg", 0.95),
         })
       }
 
@@ -282,13 +280,11 @@
           }
           image.onload = () => {
             draw()
-            exportValue(true)
           }
           image.src = args.data_url || ""
           return
         }
         draw()
-        exportValue()
       }
 
       window.addEventListener("message", (event) => {
