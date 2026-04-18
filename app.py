@@ -341,25 +341,16 @@ def _render_image_annotation_editor(exam_id: int | None) -> None:
             value = annotation_result.get(source)
             if isinstance(value, (int, float)):
                 st.session_state[target] = float(value)
+        data_url = annotation_result.get("data_url")
+        if annotation_result.get("action") == "save" and isinstance(data_url, str) and "," in data_url:
+            _, encoded = data_url.split(",", 1)
+            image_path.write_bytes(base64.b64decode(encoded))
+            set_image_caption(image_path, get_image_caption(image_path, exam_id=exam_id), exam_id=exam_id)
+            st.session_state["editing_image_path"] = None
+            st.success("Imagem anotada salva.")
+            st.rerun()
 
-    save_col, cancel_col = st.columns(2)
-    if save_col.button("Salvar imagem anotada", use_container_width=True):
-        preview_bytes = _render_annotated_image_bytes(
-            image_path,
-            annotation_text=annotation_text,
-            start_x=float(st.session_state.get("annotation_start_x", 18.0)),
-            start_y=float(st.session_state.get("annotation_start_y", 22.0)),
-            end_x=float(st.session_state.get("annotation_end_x", 70.0)),
-            end_y=float(st.session_state.get("annotation_end_y", 52.0)),
-            color_hex=ANNOTATION_COLORS[color_name],
-            line_width=line_width,
-            font_size=font_size,
-        )
-        image_path.write_bytes(preview_bytes)
-        set_image_caption(image_path, get_image_caption(image_path, exam_id=exam_id), exam_id=exam_id)
-        st.session_state["editing_image_path"] = None
-        st.success("Imagem anotada salva.")
-        st.rerun()
+    cancel_col = st.container()
     if cancel_col.button("Cancelar edição", use_container_width=True):
         st.session_state["editing_image_path"] = None
         st.rerun()

@@ -34,25 +34,45 @@
         color: #888;
         font-size: 12px;
       }
+
+      .actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        background: #0a7;
+        color: white;
+        cursor: pointer;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <canvas id="canvas"></canvas>
       <div class="hint">Arraste as bolinhas para posicionar, alongar ou encurtar a seta.</div>
+      <div class="actions">
+        <button id="save" type="button">Salvar anotacao</button>
+      </div>
     </div>
 
     <script>
       const canvas = document.getElementById("canvas")
       const ctx = canvas.getContext("2d")
       const image = new Image()
+      const saveBtn = document.getElementById("save")
 
       let args = {}
       let imageKey = ""
       let start = { x: 18, y: 22 }
       let end = { x: 70, y: 52 }
       let dragging = null
-      let lastSent = 0
 
       function postToStreamlit(type, payload = {}) {
         window.parent.postMessage(
@@ -206,17 +226,16 @@
         fitFrame()
       }
 
-      function exportValue(force = false) {
-        const now = Date.now()
-        if (!force && now - lastSent < 120) {
-          return
-        }
-        lastSent = now
+      function saveAnnotation() {
+        draw()
         setComponentValue({
+          action: "save",
           start_x: start.x,
           start_y: start.y,
           end_x: end.x,
           end_y: end.y,
+          data_url: canvas.toDataURL(args.mime_type || "image/jpeg", 0.95),
+          saved_at: Date.now(),
         })
       }
 
@@ -262,7 +281,6 @@
         event.preventDefault()
         dragging = null
         canvas.classList.remove("dragging")
-        exportValue(true)
       }
 
       function onRender(newArgs) {
@@ -298,6 +316,7 @@
       canvas.addEventListener("pointerdown", onPointerDown)
       window.addEventListener("pointermove", onPointerMove)
       window.addEventListener("pointerup", onPointerUp)
+      saveBtn.addEventListener("click", saveAnnotation)
       window.addEventListener("resize", () => {
         draw()
         fitFrame()
