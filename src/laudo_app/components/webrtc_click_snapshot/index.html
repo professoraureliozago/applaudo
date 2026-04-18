@@ -54,7 +54,7 @@
       <video id="preview" autoplay playsinline muted></video>
       <div class="badge">Clique no frame para capturar</div>
     </div>
-    <div class="hint">Ao clicar no vídeo, o snapshot é enviado ao Streamlit.</div>
+    <div class="hint">Ao clicar no video, o snapshot e enviado ao Streamlit.</div>
     <div id="error" class="error" hidden></div>
     <canvas id="canvas"></canvas>
 
@@ -64,6 +64,7 @@
       const errorEl = document.getElementById("error")
 
       let stream = null
+      let streamPromise = null
       let imageFormat = "image/jpeg"
       let imageQuality = 0.92
       let requestedWidth = 960
@@ -105,23 +106,39 @@
         errorEl.textContent = message
       }
 
+      function clearError() {
+        errorEl.hidden = true
+        errorEl.textContent = ""
+      }
+
       async function ensureStream() {
         if (stream) {
           return
         }
+        if (streamPromise) {
+          return streamPromise
+        }
+        clearError()
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
+          streamPromise = navigator.mediaDevices.getUserMedia({
             video: {
               width: { ideal: requestedWidth },
               height: { ideal: requestedHeight },
             },
             audio: false,
           })
+          stream = await streamPromise
           video.srcObject = stream
           await video.play()
           updateHeight()
         } catch (error) {
-          setError(`Não foi possível abrir a câmera: ${error?.message || error}`)
+          if (stream && error?.name === "AbortError") {
+            clearError()
+            return
+          }
+          setError(`Nao foi possivel abrir a camera: ${error?.message || error}`)
+        } finally {
+          streamPromise = null
         }
       }
 
