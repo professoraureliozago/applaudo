@@ -67,6 +67,7 @@
       const ctx = canvas.getContext("2d")
       const image = new Image()
       const saveBtn = document.getElementById("save")
+      const wrap = document.querySelector(".wrap")
 
       let args = {}
       let imageKey = ""
@@ -102,9 +103,8 @@
       }
 
       function fitFrame() {
-        const rect = canvas.getBoundingClientRect()
-        const ratio = image.naturalHeight && image.naturalWidth ? image.naturalHeight / image.naturalWidth : 0.6
-        setFrameHeight(Math.ceil(rect.width * ratio + 28))
+        const wrapHeight = wrap ? wrap.getBoundingClientRect().height : 360
+        setFrameHeight(Math.ceil(wrapHeight + 12))
       }
 
       function pctToPoint(point) {
