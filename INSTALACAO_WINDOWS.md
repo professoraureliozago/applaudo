@@ -13,6 +13,8 @@ Voce vai fazer quatro coisas:
 
 Depois da primeira instalacao, o uso diario fica simples: basta abrir `scripts\executar_windows.bat`.
 
+Se preferir, voce tambem pode criar um atalho na Area de Trabalho e abrir o Applaudo por um icone.
+
 ## 1. Instalar o Python
 
 1. Abra o site oficial: https://www.python.org/downloads/
@@ -118,7 +120,26 @@ Enquanto estiver usando o Applaudo, deixe a janela preta aberta. Ela e o servido
 
 Para fechar o aplicativo, feche a janela preta ou aperte `Ctrl + C` dentro dela.
 
-## 6. Atualizar o projeto depois
+## 6. Criar atalho na Area de Trabalho
+
+Para facilitar o uso diario:
+
+1. Abra a pasta do projeto.
+2. Entre na pasta `scripts`.
+3. De dois cliques em:
+
+```text
+criar_atalho_windows.bat
+```
+
+4. Aguarde a mensagem de sucesso.
+5. Na Area de Trabalho vai aparecer um atalho chamado `Applaudo`.
+
+Depois disso, para abrir o aplicativo no dia a dia, basta dar dois cliques nesse atalho.
+
+Importante: nao apague nem mude a pasta do projeto de lugar depois de criar o atalho. Se mover a pasta, crie o atalho novamente.
+
+## 7. Atualizar o projeto depois
 
 Quando houver uma nova versao do Applaudo:
 
@@ -135,7 +156,7 @@ atualizar_windows.bat
 
 Esse atualizador funciona melhor quando o projeto foi clonado com Git. Se o projeto foi baixado por ZIP, prefira baixar um ZIP novo quando houver atualizacao.
 
-## 7. Como abrir no VS Code
+## 8. Como abrir no VS Code
 
 1. Abra o VS Code.
 2. Clique em `File`.
@@ -154,7 +175,7 @@ Se quiser rodar pelo terminal do VS Code, use:
 .\scripts\executar_windows.bat
 ```
 
-## 8. Erros comuns
+## 9. Erros comuns
 
 ### Python nao encontrado
 
@@ -203,6 +224,16 @@ Abra manualmente:
 http://localhost:8501
 ```
 
+### O atalho parou de funcionar
+
+Isso pode acontecer se a pasta do projeto foi movida.
+
+Solucao:
+
+1. Apague o atalho antigo da Area de Trabalho.
+2. Abra novamente a pasta `scripts`.
+3. Execute `criar_atalho_windows.bat`.
+
 ### A instalacao falhou baixando bibliotecas
 
 Isso geralmente e internet, bloqueio de rede ou antivirus.
@@ -213,7 +244,7 @@ Tente:
 2. Fechar e abrir novamente `instalar_windows.bat`.
 3. Se estiver em rede de hospital ou clinica, testar em outra rede.
 
-## 9. Onde ficam os dados
+## 10. Onde ficam os dados
 
 O banco local do aplicativo fica em:
 
@@ -235,7 +266,7 @@ captured_videos\
 
 Para testar em outro notebook com os mesmos dados, faca backup dessas pastas e arquivos antes de trocar de computador.
 
-## 10. Observacao importante
+## 11. Observacao importante
 
 Esta opcao nao e um instalador profissional ainda. Ela e uma instalacao assistida por scripts, ideal para teste pratico no notebook.
 
