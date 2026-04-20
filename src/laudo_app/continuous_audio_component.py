@@ -15,7 +15,7 @@ def render_continuous_audio(
     key: str,
     chunk_ms: int = 3500,
     silence_ms: int = 1100,
-    vad_threshold: float = 0.008,
+    vad_threshold: float = 0.018,
 ) -> dict[str, Any] | None:
     value: dict[str, Any] | None = _continuous_audio(
         key=key,
