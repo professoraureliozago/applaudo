@@ -1406,6 +1406,8 @@ def render_app() -> None:
             rendered_sections = engine.render_from_transcript(st.session_state["transcript_input"])
             last_auto_sections = st.session_state.get("last_auto_sections", {})
             report.ensure_sections()
+            if not last_auto_sections:
+                last_auto_sections = dict(report.secoes)
             for section, new_text in rendered_sections.items():
                 current_text = report.secoes.get(section, "")
                 previous_auto = str(last_auto_sections.get(section, ""))
