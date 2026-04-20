@@ -252,6 +252,24 @@ O banco local do aplicativo fica em:
 data\laudo_app.db
 ```
 
+Os backups automaticos do banco ficam em:
+
+```text
+data\backups\database\
+```
+
+Os modelos editaveis por campos ficam em:
+
+```text
+data\user_templates\colonoscopia_templates.json
+```
+
+Os backups automaticos dos modelos ficam em:
+
+```text
+data\backups\templates\
+```
+
 As imagens capturadas ficam em:
 
 ```text
@@ -265,6 +283,8 @@ captured_videos\
 ```
 
 Para testar em outro notebook com os mesmos dados, faca backup dessas pastas e arquivos antes de trocar de computador.
+
+As pastas `data\backups\` e `data\user_templates\` sao locais do computador. Elas nao sao substituidas por atualizacoes do programa pelo GitHub.
 
 ## 11. Observacao importante
 

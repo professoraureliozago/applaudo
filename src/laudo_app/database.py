@@ -9,7 +9,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator
 
+from .backups import backup_sqlite_database, sqlite_integrity_check
+
 DB_PATH = Path("data/laudo_app.db")
+_STARTUP_BACKUP_DONE = False
 
 
 @dataclass(slots=True)
@@ -43,7 +46,15 @@ def _normalize_name(name: str) -> str:
 
 
 def ensure_db() -> None:
+    global _STARTUP_BACKUP_DONE
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if DB_PATH.exists() and not _STARTUP_BACKUP_DONE:
+        ok, message = sqlite_integrity_check(DB_PATH)
+        if not ok:
+            raise RuntimeError(f"Banco de dados com integridade invalida: {message}")
+        backup_sqlite_database(DB_PATH, label="startup")
+        _STARTUP_BACKUP_DONE = True
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.executescript(
@@ -126,7 +137,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
+        changed_rows = conn.total_changes
         conn.commit()
+        if changed_rows:
+            backup_sqlite_database(DB_PATH, label="auto")
     finally:
         conn.close()
 

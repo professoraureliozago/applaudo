@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import os
 import shutil
 import subprocess
@@ -55,14 +54,17 @@ from src.laudo_app.live_commands import apply_live_command
 from src.laudo_app.pdf_generator import generate_pdf
 from src.laudo_app.template_loader import load_template_config
 from src.laudo_app.transcriber import transcribe_audio_bytes
+from src.laudo_app.backups import backup_json_file, write_json_safely
 from src.laudo_app.continuous_audio_component import render_continuous_audio
 from src.laudo_app.clickable_image_component import render_clickable_image
 from src.laudo_app.image_annotator_component import render_image_annotator
 from src.laudo_app.video_recorder_component import render_video_recorder
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
 
-TEMPLATES_PATH = Path("templates/colonoscopia_templates.json")
-TEMPLATES_BACKUP_PATH = Path("templates/colonoscopia_templates.backup.json")
+TEMPLATES_PATH = Path("data/user_templates/colonoscopia_templates.json")
+TEMPLATES_LEGACY_PATH = Path("templates/colonoscopia_templates.json")
+TEMPLATES_BACKUP_PATH = Path("data/backups/templates/colonoscopia_templates.backup.json")
+TEMPLATES_LEGACY_BACKUP_PATH = Path("templates/colonoscopia_templates.backup.json")
 TEMPLATES_DEFAULT_PATH = Path("templates/colonoscopia_templates.default.json")
 ANNOTATION_COLORS = {
     "Vermelho": "#ff2d2d",
@@ -111,42 +113,57 @@ def ensure_streamlit_context() -> None:
     raise SystemExit(subprocess.call(cmd, env=env))
 
 
-def load_templates() -> dict[str, Any]:
-    def _is_valid(data: dict[str, Any]) -> bool:
-        return bool(data.get("sections"))
+def _is_valid_template_config(data: dict[str, Any]) -> bool:
+    return bool(data.get("sections"))
 
-    primary = load_template_config(str(TEMPLATES_PATH))
-    if _is_valid(primary):
+
+def _load_valid_template(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        data = load_template_config(str(path))
+    except RuntimeError:
+        return None
+    return data if _is_valid_template_config(data) else None
+
+
+def _initialize_user_templates() -> None:
+    if TEMPLATES_PATH.exists():
+        return
+
+    for source in (TEMPLATES_LEGACY_PATH, TEMPLATES_DEFAULT_PATH, TEMPLATES_LEGACY_BACKUP_PATH):
+        data = _load_valid_template(source)
+        if data is not None:
+            write_json_safely(TEMPLATES_PATH, data)
+            backup_json_file(TEMPLATES_PATH, label="initial")
+            return
+
+
+def load_templates() -> dict[str, Any]:
+    _initialize_user_templates()
+
+    primary = _load_valid_template(TEMPLATES_PATH)
+    if primary is not None:
         return primary
 
-    if TEMPLATES_BACKUP_PATH.exists():
-        backup = load_template_config(str(TEMPLATES_BACKUP_PATH))
-        if _is_valid(backup):
-            TEMPLATES_PATH.write_text(TEMPLATES_BACKUP_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-            return backup
+    for source in (TEMPLATES_BACKUP_PATH, TEMPLATES_LEGACY_BACKUP_PATH, TEMPLATES_LEGACY_PATH, TEMPLATES_DEFAULT_PATH):
+        data = _load_valid_template(source)
+        if data is not None:
+            write_json_safely(TEMPLATES_PATH, data)
+            backup_json_file(TEMPLATES_PATH, label="restored")
+            return data
 
-    if TEMPLATES_DEFAULT_PATH.exists():
-        default = load_template_config(str(TEMPLATES_DEFAULT_PATH))
-        if _is_valid(default):
-            TEMPLATES_PATH.write_text(TEMPLATES_DEFAULT_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-            return default
-
-    return primary
+    raise RuntimeError("Nenhum arquivo de templates valido foi encontrado.")
 
 
 def save_templates(data: dict[str, Any]) -> None:
-    if not data.get("sections"):
-        raise RuntimeError("Bloqueado: tentativa de salvar templates sem seções (evita apagar modelos).")
+    if not _is_valid_template_config(data):
+        raise RuntimeError("Bloqueado: tentativa de salvar templates sem secoes (evita apagar modelos).")
     if TEMPLATES_PATH.exists():
-        TEMPLATES_BACKUP_PATH.write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-        backups_dir = Path("templates/backups")
-        backups_dir.mkdir(parents=True, exist_ok=True)
-        ts_name = f"colonoscopia_templates_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        (backups_dir / ts_name).write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-    with TEMPLATES_PATH.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    # mantém default sincronizado com última versão estável salva
-    TEMPLATES_DEFAULT_PATH.write_text(TEMPLATES_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+        backup_json_file(TEMPLATES_PATH, label="before_save")
+    write_json_safely(TEMPLATES_PATH, data)
+    write_json_safely(TEMPLATES_BACKUP_PATH, data)
+    backup_json_file(TEMPLATES_PATH, label="after_save")
 
 
 def _to_iso_date(d: date) -> str:

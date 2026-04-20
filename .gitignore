@@ -6,6 +6,10 @@ __pycache__/
 captured_images/
 captured_videos/
 saved_reports/
+data/backups/
+data/user_templates/
+templates/backups/
+templates/*.backup.json
 
 # Env / tooling
 .venv/
