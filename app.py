@@ -692,7 +692,7 @@ def render_auto_transcription() -> None:
     c_cfg1, c_cfg2, c_cfg3 = st.columns(3)
     chunk_ms = c_cfg1.slider("Janela máx. por trecho (ms)", min_value=2000, max_value=8000, value=3500, step=250)
     silence_ms = c_cfg2.slider("Silêncio para cortar (ms)", min_value=500, max_value=3000, value=1100, step=100)
-    vad_threshold = c_cfg3.slider("Sensibilidade VAD", min_value=0.005, max_value=0.05, value=0.018, step=0.001, format="%.3f")
+    vad_threshold = c_cfg3.slider("Limiar VAD (menor = mais sensível)", min_value=0.003, max_value=0.05, value=0.008, step=0.001, format="%.3f")
 
     live_chunk = render_continuous_audio(
         key="continuous-audio",
