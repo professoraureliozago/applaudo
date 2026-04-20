@@ -576,6 +576,7 @@ def _transcribe_chunk(
                 openai_model=openai_model,
             )
         except RuntimeError as exc:
+            st.session_state["last_transcription_error"] = str(exc)
             st.session_state["last_voice_status"] = str(exc)
             if show_spinner:
                 st.error(str(exc))
@@ -608,6 +609,7 @@ def _handle_mic_audio_bytes(
         return
 
     st.session_state["last_mic_chunk_hash"] = chunk_hash
+    st.session_state["last_transcription_error"] = ""
     transcript = _transcribe_chunk(
         audio_bytes=audio_bytes,
         filename=filename,
@@ -618,10 +620,15 @@ def _handle_mic_audio_bytes(
     )
     if not transcript:
         st.session_state["last_voice_status"] = "Falha na transcrição do trecho."
+        if st.session_state.get("last_transcription_error"):
+            st.session_state["last_voice_status"] = st.session_state["last_transcription_error"]
+        elif st.session_state.get("last_voice_status", "").startswith("Falha"):
+            st.session_state["last_voice_status"] = "Trecho recebido, mas nenhuma fala foi reconhecida."
         st.session_state["audio_metrics"]["transcription_failures"] += 1
         return
 
     st.session_state["last_voice_transcript"] = transcript
+    st.session_state["last_transcription_error"] = ""
     st.session_state["audio_metrics"]["chunks_processed"] += 1
     result = apply_live_command(
         transcript_chunk=transcript,
@@ -785,6 +792,7 @@ def render_auto_transcription() -> None:
         st.session_state["transcript_input"] = ""
         st.session_state["last_voice_transcript"] = ""
         st.session_state["last_voice_status"] = ""
+        st.session_state["last_transcription_error"] = ""
         st.success("Rascunho limpo.")
     if c2.button("Usar exemplo de narração"):
         st.session_state["transcript_input"] = "Reto com mucosa normal. No cólon descendente, pólipo séssil de 1 cm, realizada polipectomia."
@@ -950,6 +958,7 @@ def render_app() -> None:
     st.session_state.setdefault("last_mic_chunk_hash", None)
     st.session_state.setdefault("last_voice_transcript", "")
     st.session_state.setdefault("last_voice_status", "")
+    st.session_state.setdefault("last_transcription_error", "")
     st.session_state.setdefault("selected_gallery_paths", [])
     st.session_state.setdefault("current_exam_id", None)
     st.session_state.setdefault("current_patient_id", None)
@@ -1020,6 +1029,7 @@ def render_app() -> None:
             st.session_state["last_video_capture_ts"] = 0
             st.session_state["last_webrtc_capture_ts"] = 0
             st.session_state["last_continuous_audio_ts"] = 0
+            st.session_state["last_transcription_error"] = ""
             st.session_state["audio_metrics"] = {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0}
             st.session_state["pdf_preview_exam_id"] = None
             clear_unassigned_images()

@@ -43,6 +43,8 @@
       let isRunning = false
       let currentDeviceId = ''
       let recognition = null
+      let recognitionRunning = false
+      let recognitionRestartTimer = null
       let receivedRender = false
       const RUNNING_KEY = 'laudo_continuous_audio_running'
 
@@ -190,11 +192,37 @@
           if (!text) return
           setValue({ transcript_text: text, timestamp: Date.now(), mime_type: 'text/plain' })
         }
-        recognition.onerror = () => {}
-        recognition.onend = () => {
-          if (isRunning) {
-            try { recognition.start() } catch (_) {}
+        recognition.onstart = () => {
+          recognitionRunning = true
+        }
+        recognition.onerror = (event) => {
+          recognitionRunning = false
+          if (isRunning && !['aborted', 'not-allowed', 'service-not-allowed'].includes(event?.error)) {
+            scheduleRecognitionRestart()
           }
+        }
+        recognition.onend = () => {
+          recognitionRunning = false
+          if (isRunning) {
+            scheduleRecognitionRestart()
+          }
+        }
+      }
+
+      function scheduleRecognitionRestart() {
+        if (!recognition || recognitionRestartTimer) return
+        recognitionRestartTimer = setTimeout(() => {
+          recognitionRestartTimer = null
+          startSpeechRecognition()
+        }, 600)
+      }
+
+      function startSpeechRecognition() {
+        if (!recognition || recognitionRunning || !isRunning) return
+        try {
+          recognition.start()
+        } catch (_) {
+          scheduleRecognitionRestart()
         }
       }
 
@@ -209,9 +237,7 @@
           setStatus('Captura contínua ativa (VAD).')
           startRecorder()
           setupSpeechRecognition()
-          if (recognition) {
-            try { recognition.start() } catch (_) {}
-          }
+          startSpeechRecognition()
           if (tick) clearInterval(tick)
           tick = setInterval(tickVAD, 200)
         } catch (err) {
@@ -226,6 +252,10 @@
         stopBtn.disabled = true
         if (tick) clearInterval(tick)
         stopRecorder()
+        if (recognitionRestartTimer) {
+          clearTimeout(recognitionRestartTimer)
+          recognitionRestartTimer = null
+        }
         if (recognition) {
           try { recognition.stop() } catch (_) {}
         }
