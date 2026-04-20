@@ -120,3 +120,76 @@ def test_explicit_prefix_supports_same_keyword_in_multiple_sections():
 
     assert rendered["reto"] == "Reto com sangramento."
     assert rendered["colon_descendente"] == "Cólon descendente com sangramento."
+
+def test_multiple_specific_models_can_fill_same_section():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "reto",
+                    "triggers": ["reto"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "polipo_sessil_generico",
+                            "keywords": ["polipo sessil"],
+                            "text": "Reto com polipo sessil.",
+                        },
+                        {
+                            "name": "polipo_sessil_menor_10mm",
+                            "keywords": ["polipo sessil menor que 10 milimetros"],
+                            "text": "Reto com polipo sessil menor que 10 mm.",
+                        },
+                        {
+                            "name": "polipo_sessil_maior_10mm",
+                            "keywords": ["polipo sessil maior que 10mm"],
+                            "text": "Reto com polipo sessil maior que 10 mm.",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
+    rendered = engine.render_from_transcript(
+        "Reto polipo sessil menor 10mm. Reto polipo sessil maior que 10 milimetros."
+    )
+
+    assert rendered["reto"] == (
+        "Reto com polipo sessil menor que 10 mm.\n"
+        "Reto com polipo sessil maior que 10 mm."
+    )
+    assert "Reto com polipo sessil." not in rendered["reto"]
+
+
+def test_match_section_returns_multiple_texts_for_single_field_review():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "reto",
+                    "triggers": ["reto"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "menor",
+                            "keywords": ["polipo sessil menor que 10 milimetros"],
+                            "text": "Modelo menor.",
+                        },
+                        {
+                            "name": "maior",
+                            "keywords": ["polipo sessil maior que 10mm"],
+                            "text": "Modelo maior.",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    section = engine.config["sections"][0]
+    normalized = engine._normalize_text("polipo sessil menor 10mm e polipo sessil maior que 10 milimetros")
+
+    match = engine._match_section(section, normalized)
+
+    assert match is not None
+    assert match.text == "Modelo menor.\nModelo maior."
