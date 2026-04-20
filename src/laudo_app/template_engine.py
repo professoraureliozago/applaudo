@@ -12,6 +12,9 @@ class MatchResult:
     template_name: str
     score: int
     text: str
+    specificity: int = 0
+    start: int = 0
+    end: int = 0
 
 
 @dataclass
@@ -40,9 +43,14 @@ class TemplateEngine:
             section_id = section_cfg["id"]
             default_text = section_cfg.get("default", "")
             scoped_text = transcript_scope.by_section.get(section_id, transcript_scope.unscoped_text)
-            best = self._match_section(section_cfg, scoped_text)
-            if best:
-                output[section_id] = self._apply_placeholders(best.text, transcript)
+            matches = self._match_sections(section_cfg, scoped_text)
+            if matches:
+                rendered_texts: List[str] = []
+                for match in matches:
+                    rendered_text = self._apply_placeholders(match.text, transcript).strip()
+                    if rendered_text:
+                        rendered_texts.append(rendered_text)
+                output[section_id] = "\n".join(dict.fromkeys(rendered_texts))
             else:
                 output[section_id] = default_text
 
@@ -53,34 +61,67 @@ class TemplateEngine:
         return output
 
     def _match_section(self, section_cfg: Dict[str, Any], normalized_transcript: str) -> MatchResult | None:
+        matches = self._match_sections(section_cfg, normalized_transcript)
+        return matches[0] if matches else None
+
+    def _match_sections(self, section_cfg: Dict[str, Any], normalized_transcript: str) -> List[MatchResult]:
         section_hits = 0
         for trigger in section_cfg.get("triggers", []):
             if self._contains_term(normalized_transcript, trigger):
                 section_hits += 1
 
-        best: MatchResult | None = None
+        candidates: List[tuple[int, MatchResult]] = []
         for model in section_cfg.get("models", []):
             score = 0
+            best_span: tuple[int, int] | None = None
+            best_specificity = 0
             for kw in model.get("keywords", []):
-                if self._contains_term(normalized_transcript, kw):
+                span = self._find_term_span(normalized_transcript, kw)
+                if span is not None:
                     score += 1
+                    specificity = len(self._keyword_tokens(kw))
+                    if specificity > best_specificity:
+                        best_specificity = specificity
+                        best_span = span
 
-            if section_hits > 0:
+            if section_hits > 0 and not model.get("keywords"):
                 score += 1
+                best_span = best_span or (0, 0)
 
             if score <= 0:
                 continue
 
-            candidate = MatchResult(
-                section=section_cfg["id"],
-                template_name=model["name"],
-                score=score,
-                text=model["text"],
+            start, end = best_span or (0, 0)
+            candidates.append(
+                (
+                    len(candidates),
+                    MatchResult(
+                        section=section_cfg["id"],
+                        template_name=model["name"],
+                        score=score,
+                        text=model["text"],
+                        specificity=best_specificity,
+                        start=start,
+                        end=end,
+                    ),
+                ),
             )
-            if best is None or candidate.score > best.score:
-                best = candidate
 
-        return best
+        selected: List[tuple[int, MatchResult]] = []
+        for original_index, candidate in sorted(
+            candidates,
+            key=lambda item: (-item[1].specificity, -item[1].score, item[1].start, item[0]),
+        ):
+            if candidate.start != candidate.end and any(
+                self._ranges_overlap(candidate.start, candidate.end, existing.start, existing.end)
+                for _, existing in selected
+                if existing.start != existing.end
+            ):
+                continue
+            selected.append((original_index, candidate))
+
+        selected.sort(key=lambda item: (item[1].start, item[0]))
+        return [match for _, match in selected]
 
     def _apply_placeholders(self, template_text: str, transcript: str) -> str:
         size_cm = self._extract_size_cm(transcript)
@@ -118,15 +159,55 @@ class TemplateEngine:
     def _normalize_text(text: str) -> str:
         text = text.lower()
         text = "".join(ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn")
+        text = re.sub(r"(\d+)\s*(mm|milimetros?|milimetro)\b", r"\1 mm", text)
+        text = re.sub(r"(\d+)\s*(cm|centimetros?|centimetro)\b", r"\1 cm", text)
+        text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
+        text = re.sub(r"([a-zA-Z])(\d)", r"\1 \2", text)
         text = re.sub(r"[^\w\s]", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
     def _contains_term(self, normalized_transcript: str, raw_term: str) -> bool:
-        normalized_term = self._normalize_text(raw_term)
-        if not normalized_term:
-            return False
-        return normalized_term in normalized_transcript
+        return self._find_term_span(normalized_transcript, raw_term) is not None
+
+    @staticmethod
+    def _ranges_overlap(start_a: int, end_a: int, start_b: int, end_b: int) -> bool:
+        return start_a < end_b and start_b < end_a
+
+    def _keyword_tokens(self, raw_term: str) -> List[str]:
+        stopwords = {"a", "as", "com", "da", "de", "do", "dos", "e", "em", "o", "os", "que", "um", "uma"}
+        return [token for token in self._normalize_text(raw_term).split() if token and token not in stopwords]
+
+    def _find_term_span(self, normalized_transcript: str, raw_term: str) -> tuple[int, int] | None:
+        term_tokens = self._keyword_tokens(raw_term)
+        if not term_tokens:
+            return None
+
+        transcript_tokens = [
+            (match.group(0), match.start(), match.end())
+            for match in re.finditer(r"\S+", normalized_transcript)
+        ]
+        if not transcript_tokens:
+            return None
+
+        for start_idx, (token, start, _) in enumerate(transcript_tokens):
+            if token != term_tokens[0]:
+                continue
+            current_idx = start_idx
+            matched = 0
+            end = start
+            while current_idx < len(transcript_tokens) and matched < len(term_tokens):
+                current_token, _, current_end = transcript_tokens[current_idx]
+                if current_token == term_tokens[matched]:
+                    matched += 1
+                    end = current_end
+                elif current_token not in {"a", "as", "com", "da", "de", "do", "dos", "e", "em", "o", "os", "que", "um", "uma"}:
+                    break
+                current_idx += 1
+            if matched == len(term_tokens):
+                return (start, end)
+
+        return None
 
     def _build_transcript_scope(self, normalized_transcript: str) -> TranscriptScope:
         scoped_chunks: Dict[str, List[str]] = {}

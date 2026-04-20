@@ -406,12 +406,11 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
     if not section:
         return current_text
     normalized = engine._normalize_text(input_text or "")
-    best = engine._match_section(section, normalized)
-    if not best:
+    matches = engine._match_sections(section, normalized)
+    if not matches:
         # fallback para revisão manual: aceita correspondência por token de keyword
         input_tokens = {tok for tok in normalized.split() if tok}
-        fallback_model = None
-        fallback_score = 0
+        fallback_models: list[tuple[int, dict[str, Any]]] = []
         for model in section.get("models", []):
             score = 0
             for kw in model.get("keywords", []):
@@ -419,20 +418,25 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
                 # match parcial: ao menos um token significativo em comum
                 if any(tok in input_tokens for tok in kw_tokens if len(tok) >= 4):
                     score += 1
-            if score > fallback_score:
-                fallback_score = score
-                fallback_model = model
-        if fallback_model and fallback_score > 0:
-            model_text = (fallback_model.get("text") or "").strip()
-            if model_text:
-                class _Best:
-                    text = model_text
-                best = _Best()
-    if best:
-        model_text = engine._apply_placeholders(best.text, input_text or "").strip()
-        if not model_text:
-            return current_text
-        return model_text
+            if score > 0:
+                fallback_models.append((score, model))
+        if fallback_models:
+            fallback_models.sort(key=lambda item: (-item[0], section.get("models", []).index(item[1])))
+            rendered_fallbacks = [
+                engine._apply_placeholders((model.get("text") or "").strip(), input_text or "").strip()
+                for _, model in fallback_models
+                if (model.get("text") or "").strip()
+            ]
+            if rendered_fallbacks:
+                return "\n".join(dict.fromkeys(rendered_fallbacks))
+    if matches:
+        rendered_texts = []
+        for match in matches:
+            rendered_text = engine._apply_placeholders(match.text, input_text or "").strip()
+            if rendered_text:
+                rendered_texts.append(rendered_text)
+        if rendered_texts:
+            return "\n".join(dict.fromkeys(rendered_texts))
     return current_text
 
 
