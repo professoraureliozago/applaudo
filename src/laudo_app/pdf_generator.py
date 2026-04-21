@@ -176,7 +176,7 @@ def generate_pdf(report: ReportData) -> bytes:
         body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story.append(body_table)
         if remaining_text:
-            story.append(PageBreak())
+            story.append(Spacer(1, 2 * mm))
             story.extend(remaining_text)
     else:
         story.extend(_flatten_text_sections(text_sections, keep_sections_together=True))
