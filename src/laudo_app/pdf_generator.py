@@ -5,7 +5,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Image as RLImage
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .models import ReportData
 
@@ -58,12 +58,31 @@ def _build_image_panel(image_bytes: list[bytes], captions: list[str], body_style
 
 
 def _chunk_image_items(image_bytes: list[bytes], image_captions: list[str], chunk_size: int = 4) -> list[tuple[list[bytes], list[str]]]:
-    if not image_bytes:
-        return [([], [])]
     chunks: list[tuple[list[bytes], list[str]]] = []
     for i in range(0, len(image_bytes), chunk_size):
         chunks.append((image_bytes[i : i + chunk_size], image_captions[i : i + chunk_size]))
     return chunks
+
+
+def _build_text_flow(report: ReportData, section_style: ParagraphStyle, body_style: ParagraphStyle) -> list:
+    flow: list = []
+    for key, label in FIELD_ORDER:
+        raw_text = report.secoes.get(key, "")
+        if not _has_meaningful_content(raw_text):
+            continue
+        flow.append(
+            KeepTogether(
+                [
+                    Paragraph(f"<b>{label}</b>", section_style),
+                    Paragraph(_normalize_text_for_pdf(raw_text), body_style),
+                ]
+            )
+        )
+        flow.append(Spacer(1, 1.5 * mm))
+
+    if not flow:
+        flow.append(Paragraph("Sem campos preenchidos para exibição.", body_style))
+    return flow
 
 
 def generate_pdf(report: ReportData) -> bytes:
@@ -129,27 +148,16 @@ def generate_pdf(report: ReportData) -> bytes:
     story.append(separator)
     story.append(Spacer(1, 2.5 * mm))
 
-    left_column: list = []
-    for key, label in FIELD_ORDER:
-        raw_text = report.secoes.get(key, "")
-        if not _has_meaningful_content(raw_text):
-            continue
-        left_column.append(Paragraph(f"<b>{label}</b>", section_style))
-        left_column.append(Paragraph(_normalize_text_for_pdf(raw_text), body_style))
-        left_column.append(Spacer(1, 1.5 * mm))
-
-    if not left_column:
-        left_column.append(Paragraph("Sem campos preenchidos para exibição.", body_style))
+    story.extend(_build_text_flow(report, section_style, body_style))
 
     image_chunks = _chunk_image_items(report.image_bytes, report.image_captions, chunk_size=4)
     for idx, (chunk_images, chunk_captions) in enumerate(image_chunks):
-        current_left = left_column if idx == 0 else [Paragraph("<b>Imagens adicionais</b>", section_style)]
+        story.append(PageBreak())
+        current_left = [Paragraph("<b>Imagens do exame</b>" if idx == 0 else "<b>Imagens adicionais</b>", section_style)]
         right_column = _build_image_panel(chunk_images, chunk_captions, body_style)
         body_table = Table([[current_left, right_column]], colWidths=[132 * mm, 52 * mm])
         body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story.append(body_table)
-        if idx < len(image_chunks) - 1:
-            story.append(PageBreak())
 
     doc.build(story, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
     return buffer.getvalue()
