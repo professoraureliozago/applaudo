@@ -60,6 +60,7 @@ from src.laudo_app.clickable_image_component import render_clickable_image
 from src.laudo_app.image_annotator_component import render_image_annotator
 from src.laudo_app.video_recorder_component import render_video_recorder
 from src.laudo_app.webrtc_click_component import render_webrtc_click_snapshot
+from src.laudo_app.models import DEFAULT_SECTION_TEXTS
 
 TEMPLATES_PATH = Path("data/user_templates/colonoscopia_templates.json")
 TEMPLATES_LEGACY_PATH = Path("templates/colonoscopia_templates.json")
@@ -432,8 +433,35 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
         model_text = engine._apply_placeholders(best.text, input_text or "").strip()
         if not model_text:
             return current_text
-        return model_text
+        return _merge_section_text(current_text, model_text)
     return current_text
+
+
+def _merge_section_text(base_text: str, addition_text: str) -> str:
+    base = (base_text or "").strip()
+    additions = [part.strip() for part in (addition_text or "").splitlines() if part.strip()]
+    if not additions:
+        return base
+    if not base:
+        return "\n".join(dict.fromkeys(additions))
+
+    merged_parts = [part.strip() for part in base.splitlines() if part.strip()]
+    normalized_existing = {_normalize_for_search(part) for part in merged_parts}
+    for addition in additions:
+        normalized_addition = _normalize_for_search(addition)
+        if normalized_addition and normalized_addition not in normalized_existing:
+            merged_parts.append(addition)
+            normalized_existing.add(normalized_addition)
+    return "\n".join(merged_parts)
+
+
+def _is_template_default(engine: TemplateEngine, section_id: str, text: str) -> bool:
+    candidate = (text or "").strip()
+    if not candidate:
+        return True
+    section = next((s for s in engine.config.get("sections", []) if s.get("id") == section_id), None)
+    default_text = str((section or {}).get("default", "")).strip()
+    return bool(default_text) and candidate == default_text
 
 
 def render_template_manager(templates_data: dict[str, Any]) -> None:
@@ -1411,12 +1439,20 @@ def render_app() -> None:
             for section, new_text in rendered_sections.items():
                 current_text = report.secoes.get(section, "")
                 previous_auto = str(last_auto_sections.get(section, ""))
-                should_update = (not str(current_text).strip()) or (str(current_text).strip() == previous_auto.strip())
-                if should_update and str(new_text).strip():
-                    report.secoes[section] = new_text
-                    st.session_state[f"sec_{section}"] = new_text
+                default_text = DEFAULT_SECTION_TEXTS.get(section, "")
+                current_is_default = str(current_text).strip() == str(default_text).strip()
+                should_update = (
+                    not str(current_text).strip()
+                    or current_is_default
+                    or (str(current_text).strip() == previous_auto.strip())
+                )
+                if should_update and str(new_text).strip() and not _is_template_default(engine, section, new_text):
+                    base_text = default_text if (current_is_default or str(current_text).strip() == previous_auto.strip()) else current_text
+                    merged_text = _merge_section_text(base_text, new_text)
+                    report.secoes[section] = merged_text
+                    st.session_state[f"sec_{section}"] = merged_text
             report.ensure_sections()
-            st.session_state["last_auto_sections"] = dict(rendered_sections)
+            st.session_state["last_auto_sections"] = dict(report.secoes)
             st.session_state["report"] = report
 
         report: ReportData | None = st.session_state.get("report")

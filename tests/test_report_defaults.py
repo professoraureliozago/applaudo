@@ -1,4 +1,7 @@
 from src.laudo_app.models import DEFAULT_SECTIONS, ReportData
+from src.laudo_app.template_engine import TemplateEngine
+
+import app
 
 
 def test_new_report_sections_start_with_default_texts():
@@ -31,3 +34,44 @@ def test_existing_report_text_is_preserved_when_ensuring_sections():
 
     assert report.secoes["reto"] == "Texto manual do reto."
     assert report.secoes["indicacao"] == "Rastreamento."
+
+
+def test_review_models_are_added_to_existing_default_text():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "reto",
+                    "triggers": ["reto"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "polipo_menor",
+                            "keywords": ["polipo sessil menor que 10 milimetros"],
+                            "text": "Presença de pólipo séssil menor que 10 mm em reto.",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    report = ReportData()
+    report.ensure_sections()
+
+    reviewed = app._apply_models_for_single_section(
+        engine=engine,
+        section_id="reto",
+        input_text="reto polipo sessil menor 10mm",
+        current_text=report.secoes["reto"],
+    )
+
+    assert reviewed == (
+        "O reto tem calibre e mucosa normais.\n"
+        "Presença de pólipo séssil menor que 10 mm em reto."
+    )
+
+
+def test_merge_section_text_does_not_duplicate_same_model_text():
+    merged = app._merge_section_text("Texto inicial.\nAchado.", "Achado.")
+
+    assert merged == "Texto inicial.\nAchado."
