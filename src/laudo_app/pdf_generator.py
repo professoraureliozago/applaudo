@@ -4,8 +4,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image as RLImage
-from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import BaseDocTemplate, Frame, KeepTogether, PageBreak, PageTemplate, Paragraph, Spacer, Table, TableStyle
 
 from .models import ReportData
 
@@ -36,25 +36,6 @@ def _normalize_text_for_pdf(text: str) -> str:
 
 def _has_meaningful_content(text: str) -> bool:
     return bool(text and text.strip())
-
-
-def _build_image_panel(image_bytes: list[bytes], captions: list[str], body_style: ParagraphStyle) -> list:
-    panel: list = []
-    image_count = min(4, len(image_bytes))
-
-    for i in range(4):
-        if i < image_count:
-            image = RLImage(BytesIO(image_bytes[i]), width=50 * mm, height=40 * mm)
-            image.hAlign = "CENTER"
-            panel.append(image)
-            caption = captions[i] if i < len(captions) and captions[i] else f"imagem {i + 1}"
-            panel.append(Paragraph(f"<i>{caption}</i>", body_style))
-        else:
-            panel.append(Spacer(50 * mm, 40 * mm))
-            panel.append(Paragraph("", body_style))
-        panel.append(Spacer(1, 2 * mm))
-
-    return panel
 
 
 def _chunk_image_items(image_bytes: list[bytes], image_captions: list[str], chunk_size: int = 4) -> list[tuple[list[bytes], list[str]]]:
@@ -94,24 +75,7 @@ def _flatten_text_sections(sections: list[list], keep_sections_together: bool) -
     return flow
 
 
-def _split_text_sections_for_side_images(text_sections: list[list]) -> tuple[list[list], list[list]]:
-    max_first_page_sections = 4
-    if len(text_sections) <= max_first_page_sections:
-        return text_sections, []
-    return text_sections[:max_first_page_sections], text_sections[max_first_page_sections:]
-
-
 def generate_pdf(report: ReportData) -> bytes:
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        topMargin=26 * mm,
-        bottomMargin=16 * mm,
-        leftMargin=12 * mm,
-        rightMargin=12 * mm,
-    )
-
     styles = getSampleStyleSheet()
     laudo_title_style = ParagraphStyle("LaudoTitle", parent=styles["Heading3"], alignment=1, fontSize=12)
     section_style = ParagraphStyle("Section", parent=styles["Heading4"], fontSize=10.5, leading=12, spaceAfter=1)
@@ -138,7 +102,48 @@ def generate_pdf(report: ReportData) -> bytes:
     header_table = Table(header_data, colWidths=[92 * mm, 46 * mm, 46 * mm])
     header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
 
-    def draw_header_footer(canvas, _doc):
+    image_chunks = _chunk_image_items(report.image_bytes, report.image_captions, chunk_size=4)
+    has_images = bool(image_chunks)
+    left_margin = 12 * mm
+    bottom_margin = 16 * mm
+    top_margin = 26 * mm
+    full_width = A4[0] - (24 * mm)
+    text_width = 132 * mm if has_images else full_width
+    first_frame_top = A4[1] - 72 * mm
+    later_frame_top = A4[1] - top_margin
+    image_x = left_margin + text_width + 4 * mm
+    image_width = 50 * mm
+    image_height = 40 * mm
+
+    def draw_side_images(canvas, page_number: int):
+        chunk_index = page_number - 1
+        if chunk_index >= len(image_chunks):
+            return
+
+        chunk_images, chunk_captions = image_chunks[chunk_index]
+        y = (first_frame_top if page_number == 1 else later_frame_top) - 2 * mm
+        for idx in range(4):
+            if idx >= len(chunk_images):
+                break
+
+            canvas.drawImage(
+                ImageReader(BytesIO(chunk_images[idx])),
+                image_x,
+                y - image_height,
+                width=image_width,
+                height=image_height,
+                preserveAspectRatio=True,
+                anchor="c",
+            )
+            y -= image_height + 1.5 * mm
+
+            caption = chunk_captions[idx] if idx < len(chunk_captions) and chunk_captions[idx] else f"imagem {idx + 1}"
+            caption_paragraph = Paragraph(f"<i>{caption}</i>", body_style)
+            _, caption_height = caption_paragraph.wrap(image_width, 12 * mm)
+            caption_paragraph.drawOn(canvas, image_x, y - caption_height)
+            y -= caption_height + 3 * mm
+
+    def draw_common_header_footer(canvas, page_number: int):
         canvas.saveState()
         y_top = A4[1] - 10 * mm
         canvas.setFont("Helvetica-Bold", 14)
@@ -151,43 +156,66 @@ def generate_pdf(report: ReportData) -> bytes:
         canvas.setFillColor(colors.HexColor("#d26f2a"))
         canvas.line(12 * mm, 12 * mm, A4[0] - 12 * mm, 12 * mm)
         canvas.drawCentredString(A4[0] / 2, 8 * mm, report.footer_text or "")
+        draw_side_images(canvas, page_number)
         canvas.restoreState()
-
-    story = []
-    story.append(Paragraph("<u><b>Laudo de Videocolonoscopia</b></u>", laudo_title_style))
-    story.append(Spacer(1, 3 * mm))
-    story.append(header_table)
-    story.append(Spacer(1, 2 * mm))
 
     separator = Table([[" "]], colWidths=[184 * mm], rowHeights=[0.5 * mm])
     separator.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, 0), colors.black)]))
-    story.append(separator)
-    story.append(Spacer(1, 2.5 * mm))
 
-    text_sections = _build_text_sections(report, section_style, body_style)
+    def draw_first_page(canvas, doc):
+        draw_common_header_footer(canvas, doc.page)
+        title = Paragraph("<u><b>Laudo de Videocolonoscopia</b></u>", laudo_title_style)
+        _, title_height = title.wrap(full_width, 12 * mm)
+        title.drawOn(canvas, left_margin, A4[1] - 32 * mm - title_height)
+        header_table.wrapOn(canvas, full_width, 30 * mm)
+        header_table.drawOn(canvas, left_margin, A4[1] - 58 * mm)
+        separator.wrapOn(canvas, full_width, 2 * mm)
+        separator.drawOn(canvas, left_margin, A4[1] - 65 * mm)
 
-    image_chunks = _chunk_image_items(report.image_bytes, report.image_captions, chunk_size=4)
-    if image_chunks:
-        first_page_sections, remaining_sections = _split_text_sections_for_side_images(text_sections)
-        first_page_text = _flatten_text_sections(first_page_sections, keep_sections_together=False)
-        remaining_text = _flatten_text_sections(remaining_sections, keep_sections_together=True)
-        right_column = _build_image_panel(image_chunks[0][0], image_chunks[0][1], body_style)
-        body_table = Table([[first_page_text, right_column]], colWidths=[132 * mm, 52 * mm])
-        body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        story.append(body_table)
-        if remaining_text:
-            story.append(Spacer(1, 2 * mm))
-            story.extend(remaining_text)
-    else:
-        story.extend(_flatten_text_sections(text_sections, keep_sections_together=True))
+    def draw_later_page(canvas, doc):
+        draw_common_header_footer(canvas, doc.page)
 
-    for chunk_images, chunk_captions in image_chunks[1:]:
-        story.append(PageBreak())
-        current_left = [Paragraph("<b>Imagens adicionais</b>", section_style)]
-        right_column = _build_image_panel(chunk_images, chunk_captions, body_style)
-        body_table = Table([[current_left, right_column]], colWidths=[132 * mm, 52 * mm])
-        body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        story.append(body_table)
+    def build_pdf(extra_image_pages: int) -> tuple[bytes, int]:
+        buffer = BytesIO()
+        doc = BaseDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=left_margin,
+            rightMargin=12 * mm,
+            topMargin=top_margin,
+            bottomMargin=bottom_margin,
+        )
+        first_frame = Frame(
+            left_margin,
+            bottom_margin,
+            text_width,
+            first_frame_top - bottom_margin,
+            id="first_body",
+        )
+        later_frame = Frame(
+            left_margin,
+            bottom_margin,
+            text_width,
+            later_frame_top - bottom_margin,
+            id="later_body",
+        )
+        doc.addPageTemplates(
+            [
+                PageTemplate(id="First", frames=[first_frame], onPage=draw_first_page, autoNextPageTemplate="Later"),
+                PageTemplate(id="Later", frames=[later_frame], onPage=draw_later_page),
+            ]
+        )
 
-    doc.build(story, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
-    return buffer.getvalue()
+        text_sections = _build_text_sections(report, section_style, body_style)
+        story = _flatten_text_sections(text_sections, keep_sections_together=True)
+        for _ in range(extra_image_pages):
+            story.append(PageBreak())
+            story.append(Paragraph("<b>Imagens adicionais</b>", section_style))
+        doc.build(story)
+        return buffer.getvalue(), doc.page
+
+    pdf_data, page_count = build_pdf(extra_image_pages=0)
+    missing_image_pages = max(0, len(image_chunks) - page_count)
+    if missing_image_pages:
+        pdf_data, _ = build_pdf(extra_image_pages=missing_image_pages)
+    return pdf_data
