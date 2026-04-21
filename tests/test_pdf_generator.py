@@ -58,3 +58,23 @@ def test_generate_pdf_handles_long_report_text_across_pages():
 
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 2500
+
+
+def test_generate_pdf_keeps_side_images_with_long_report_text():
+    report = ReportData(
+        paciente="Paciente Texto e Imagens",
+        medico="Dr. Teste",
+        data_exame="01/01/2026",
+        hora_exame="10:00",
+        image_bytes=[_ONE_PIXEL_PNG] * 4,
+        image_captions=[f"Imagem {idx + 1}" for idx in range(4)],
+    )
+    report.ensure_sections()
+    long_finding = "Achado descritivo longo em reto com detalhes adicionais. " * 220
+    report.secoes["reto"] = long_finding
+    report.secoes["colon_descendente"] = long_finding
+
+    pdf = generate_pdf(report)
+
+    assert pdf.startswith(b"%PDF")
+    assert len(pdf) > 2500

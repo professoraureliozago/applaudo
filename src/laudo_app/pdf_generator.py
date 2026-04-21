@@ -64,25 +64,41 @@ def _chunk_image_items(image_bytes: list[bytes], image_captions: list[str], chun
     return chunks
 
 
-def _build_text_flow(report: ReportData, section_style: ParagraphStyle, body_style: ParagraphStyle) -> list:
-    flow: list = []
+def _build_text_sections(report: ReportData, section_style: ParagraphStyle, body_style: ParagraphStyle) -> list[list]:
+    sections: list[list] = []
     for key, label in FIELD_ORDER:
         raw_text = report.secoes.get(key, "")
         if not _has_meaningful_content(raw_text):
             continue
-        flow.append(
-            KeepTogether(
-                [
-                    Paragraph(f"<b>{label}</b>", section_style),
-                    Paragraph(_normalize_text_for_pdf(raw_text), body_style),
-                ]
-            )
+        sections.append(
+            [
+                Paragraph(f"<b>{label}</b>", section_style),
+                Paragraph(_normalize_text_for_pdf(raw_text), body_style),
+                Spacer(1, 1.5 * mm),
+            ]
         )
-        flow.append(Spacer(1, 1.5 * mm))
 
-    if not flow:
-        flow.append(Paragraph("Sem campos preenchidos para exibição.", body_style))
+    if not sections:
+        sections.append([Paragraph("Sem campos preenchidos para exibicao.", body_style)])
+    return sections
+
+
+def _flatten_text_sections(sections: list[list], keep_sections_together: bool) -> list:
+    flow: list = []
+    for section in sections:
+        if keep_sections_together and len(section) >= 2:
+            flow.append(KeepTogether(section[:2]))
+            flow.extend(section[2:])
+        else:
+            flow.extend(section)
     return flow
+
+
+def _split_text_sections_for_side_images(text_sections: list[list]) -> tuple[list[list], list[list]]:
+    max_first_page_sections = 4
+    if len(text_sections) <= max_first_page_sections:
+        return text_sections, []
+    return text_sections[:max_first_page_sections], text_sections[max_first_page_sections:]
 
 
 def generate_pdf(report: ReportData) -> bytes:
@@ -148,12 +164,26 @@ def generate_pdf(report: ReportData) -> bytes:
     story.append(separator)
     story.append(Spacer(1, 2.5 * mm))
 
-    story.extend(_build_text_flow(report, section_style, body_style))
+    text_sections = _build_text_sections(report, section_style, body_style)
 
     image_chunks = _chunk_image_items(report.image_bytes, report.image_captions, chunk_size=4)
-    for idx, (chunk_images, chunk_captions) in enumerate(image_chunks):
+    if image_chunks:
+        first_page_sections, remaining_sections = _split_text_sections_for_side_images(text_sections)
+        first_page_text = _flatten_text_sections(first_page_sections, keep_sections_together=False)
+        remaining_text = _flatten_text_sections(remaining_sections, keep_sections_together=True)
+        right_column = _build_image_panel(image_chunks[0][0], image_chunks[0][1], body_style)
+        body_table = Table([[first_page_text, right_column]], colWidths=[132 * mm, 52 * mm])
+        body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(body_table)
+        if remaining_text:
+            story.append(PageBreak())
+            story.extend(remaining_text)
+    else:
+        story.extend(_flatten_text_sections(text_sections, keep_sections_together=True))
+
+    for chunk_images, chunk_captions in image_chunks[1:]:
         story.append(PageBreak())
-        current_left = [Paragraph("<b>Imagens do exame</b>" if idx == 0 else "<b>Imagens adicionais</b>", section_style)]
+        current_left = [Paragraph("<b>Imagens adicionais</b>", section_style)]
         right_column = _build_image_panel(chunk_images, chunk_captions, body_style)
         body_table = Table([[current_left, right_column]], colWidths=[132 * mm, 52 * mm])
         body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
