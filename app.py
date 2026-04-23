@@ -445,6 +445,7 @@ CONCLUSION_SOURCE_SECTIONS = [
     ("colon_transverso", "Cólon transverso"),
     ("angulo_hepatico", "Ângulo hepático"),
     ("colon_ascendente", "Cólon ascendente"),
+    ("ceco", "Ceco"),
     ("ileo_terminal", "Íleo"),
     ("observacao_2", "Observação 2"),
 ]

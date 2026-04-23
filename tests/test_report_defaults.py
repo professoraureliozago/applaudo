@@ -129,3 +129,16 @@ def test_reviewed_model_can_refresh_numbered_conclusion():
     app._refresh_conclusion_from_sections(report)
 
     assert report.secoes["conclusao"] == "1- Reto - PÃ³lipo sÃ©ssil menor que 10 mm."
+
+
+def test_ceco_finding_is_included_in_numbered_conclusion():
+    report = ReportData()
+    report.ensure_sections()
+    report.secoes["ceco"] = app._merge_section_text(
+        report.secoes["ceco"],
+        "Ceco com pÃ³lipo sÃ©ssil menor que 10 mm.",
+    )
+
+    app._refresh_conclusion_from_sections(report)
+
+    assert report.secoes["conclusao"] == "1- Ceco - Ceco com pÃ³lipo sÃ©ssil menor que 10 mm."
