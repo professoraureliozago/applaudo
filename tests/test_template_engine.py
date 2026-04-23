@@ -193,3 +193,40 @@ def test_match_section_returns_multiple_texts_for_single_field_review():
 
     assert match is not None
     assert match.text == "Modelo menor.\nModelo maior."
+
+
+def test_shared_ceco_trigger_prefers_ceco_section_over_altura():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "altura_atingida",
+                    "triggers": ["ceco"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "altura_ceco",
+                            "keywords": ["ate o ceco"],
+                            "text": "Altura ate o ceco.",
+                        }
+                    ],
+                },
+                {
+                    "id": "ceco",
+                    "triggers": ["ceco"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "ceco_identificado",
+                            "keywords": ["ostio apendicular"],
+                            "text": "Ceco identificado pelo ostio apendicular.",
+                        }
+                    ],
+                },
+            ]
+        }
+    )
+
+    rendered = engine.render_from_transcript("Ceco ostio apendicular.")
+
+    assert rendered["ceco"] == "Ceco identificado pelo ostio apendicular."

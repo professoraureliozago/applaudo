@@ -250,7 +250,7 @@ class TemplateEngine:
         return TranscriptScope(by_section=by_section, unscoped_text=unscoped_text)
 
     def _find_section_matches(self, normalized_transcript: str) -> List[tuple[int, int, str]]:
-        raw_matches: List[tuple[int, int, str]] = []
+        raw_matches: List[tuple[int, int, str, int]] = []
         for section_cfg in self.config.get("sections", []):
             section_id = section_cfg["id"]
             for trigger in section_cfg.get("triggers", []):
@@ -259,15 +259,16 @@ class TemplateEngine:
                     continue
                 pattern = rf"\b{re.escape(normalized_trigger)}\b"
                 for match in re.finditer(pattern, normalized_transcript):
-                    raw_matches.append((match.start(), match.end(), section_id))
+                    priority = self._section_trigger_priority(section_id, normalized_trigger)
+                    raw_matches.append((match.start(), match.end(), section_id, priority))
 
         if not raw_matches:
             return []
 
-        raw_matches.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+        raw_matches.sort(key=lambda item: (item[0], -(item[1] - item[0]), -item[3]))
         selected: List[tuple[int, int, str]] = []
         current_end = -1
-        for start, end, section_id in raw_matches:
+        for start, end, section_id, _priority in raw_matches:
             if start < current_end:
                 continue
             selected.append((start, end, section_id))
@@ -275,3 +276,7 @@ class TemplateEngine:
 
         selected.sort(key=lambda item: item[0])
         return selected
+
+    def _section_trigger_priority(self, section_id: str, normalized_trigger: str) -> int:
+        normalized_section = self._normalize_text(section_id.replace("_", " "))
+        return 1 if normalized_trigger == normalized_section else 0
