@@ -437,6 +437,19 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
     return current_text
 
 
+CONCLUSION_SOURCE_SECTIONS = [
+    ("reto", "Reto"),
+    ("colon_sigmoide", "Cólon sigmoide"),
+    ("colon_descendente", "Cólon descendente"),
+    ("angulo_esplenico", "Ângulo esplênico"),
+    ("colon_transverso", "Cólon transverso"),
+    ("angulo_hepatico", "Ângulo hepático"),
+    ("colon_ascendente", "Cólon ascendente"),
+    ("ileo_terminal", "Íleo"),
+    ("observacao_2", "Observação 2"),
+]
+
+
 def _merge_section_text(base_text: str, addition_text: str) -> str:
     base = (base_text or "").strip()
     additions = [part.strip() for part in (addition_text or "").splitlines() if part.strip()]
@@ -453,6 +466,47 @@ def _merge_section_text(base_text: str, addition_text: str) -> str:
             merged_parts.append(addition)
             normalized_existing.add(normalized_addition)
     return "\n".join(merged_parts)
+
+
+def _extract_conclusion_findings(section_id: str, text: str) -> list[str]:
+    default_text = DEFAULT_SECTION_TEXTS.get(section_id, "").strip()
+    default_normalized = _normalize_for_search(default_text)
+    findings: list[str] = []
+
+    for part in [line.strip() for line in (text or "").splitlines() if line.strip()]:
+        if default_normalized and _normalize_for_search(part) == default_normalized:
+            continue
+        findings.append(part)
+
+    if not findings and default_normalized:
+        candidate = (text or "").strip()
+        normalized_candidate = _normalize_for_search(candidate)
+        if normalized_candidate and normalized_candidate != default_normalized:
+            findings.append(candidate)
+
+    return findings
+
+
+def _build_numbered_conclusion_from_sections(sections: dict[str, str]) -> str:
+    items: list[str] = []
+    seen: set[str] = set()
+
+    for section_id, label in CONCLUSION_SOURCE_SECTIONS:
+        for finding in _extract_conclusion_findings(section_id, sections.get(section_id, "")):
+            normalized_finding = _normalize_for_search(f"{label} - {finding}")
+            if not normalized_finding or normalized_finding in seen:
+                continue
+            seen.add(normalized_finding)
+            items.append(f"{label} - {finding}")
+
+    return "\n".join(f"{idx}- {item}" for idx, item in enumerate(items, start=1))
+
+
+def _refresh_conclusion_from_sections(report: ReportData) -> None:
+    conclusion = _build_numbered_conclusion_from_sections(report.secoes)
+    if conclusion:
+        report.secoes["conclusao"] = conclusion
+        st.session_state["sec_conclusao"] = conclusion
 
 
 def _is_template_default(engine: TemplateEngine, section_id: str, text: str) -> bool:
@@ -1452,6 +1506,7 @@ def render_app() -> None:
                     report.secoes[section] = merged_text
                     st.session_state[f"sec_{section}"] = merged_text
             report.ensure_sections()
+            _refresh_conclusion_from_sections(report)
             st.session_state["last_auto_sections"] = dict(report.secoes)
             st.session_state["report"] = report
 
@@ -1481,7 +1536,11 @@ def render_app() -> None:
                         current_text=report.secoes[section],
                     )
                     report.secoes[section] = reviewed
-                    st.session_state["pending_section_updates"] = {section: reviewed}
+                    _refresh_conclusion_from_sections(report)
+                    pending_review_updates = {section: reviewed}
+                    if "conclusao" in report.secoes:
+                        pending_review_updates["conclusao"] = report.secoes["conclusao"]
+                    st.session_state["pending_section_updates"] = pending_review_updates
                     if reviewed != before_text:
                         st.success(f"Campo {section.replace('_', ' ')} revisado com modelos desta seção.")
                     else:

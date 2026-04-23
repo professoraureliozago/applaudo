@@ -75,3 +75,57 @@ def test_merge_section_text_does_not_duplicate_same_model_text():
     merged = app._merge_section_text("Texto inicial.\nAchado.", "Achado.")
 
     assert merged == "Texto inicial.\nAchado."
+
+
+def test_numbered_conclusion_uses_only_findings_added_to_target_sections():
+    report = ReportData()
+    report.ensure_sections()
+    report.secoes["reto"] = app._merge_section_text(
+        report.secoes["reto"],
+        "PÃ³lipo sÃ©ssil menor que 10 mm.",
+    )
+    report.secoes["colon_sigmoide"] = app._merge_section_text(
+        report.secoes["colon_sigmoide"],
+        "DivertÃ­culos em sigmoide.",
+    )
+
+    conclusion = app._build_numbered_conclusion_from_sections(report.secoes)
+
+    assert conclusion == (
+        "1- Reto - PÃ³lipo sÃ©ssil menor que 10 mm.\n"
+        "2- Cólon sigmoide - DivertÃ­culos em sigmoide."
+    )
+    assert "calibre e mucosa normais" not in conclusion
+
+
+def test_reviewed_model_can_refresh_numbered_conclusion():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "reto",
+                    "triggers": ["reto"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "polipo_menor",
+                            "keywords": ["polipo sessil menor que 10 milimetros"],
+                            "text": "PÃ³lipo sÃ©ssil menor que 10 mm.",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    report = ReportData()
+    report.ensure_sections()
+    report.secoes["reto"] = app._apply_models_for_single_section(
+        engine=engine,
+        section_id="reto",
+        input_text="reto polipo sessil menor 10mm",
+        current_text=report.secoes["reto"],
+    )
+
+    app._refresh_conclusion_from_sections(report)
+
+    assert report.secoes["conclusao"] == "1- Reto - PÃ³lipo sÃ©ssil menor que 10 mm."
