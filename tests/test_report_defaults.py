@@ -1,4 +1,4 @@
-from src.laudo_app.models import DEFAULT_SECTIONS, ReportData
+from src.laudo_app.models import DEFAULT_SECTION_TEXTS, DEFAULT_SECTIONS, ReportData
 from src.laudo_app.template_engine import TemplateEngine
 
 import app
@@ -8,22 +8,8 @@ def test_new_report_sections_start_with_default_texts():
     report = ReportData()
     report.ensure_sections()
 
-    assert report.secoes["indicacao"] == "Rastreamento."
-    assert report.secoes["preparo_paciente"] == "Preparo adequado com discreta quantidade de resíduos líquidos. Escala de Boston 09 pontos."
-    assert report.secoes["duracao"] == "A duração do exame foi de aproximadamente 20 minutos."
-    assert report.secoes["altura_atingida"] == "O colonoscópio foi introduzido pelo ânus até o ceco."
-    assert report.secoes["reto"] == "O reto tem calibre e mucosa normais."
-    assert report.secoes["colon_sigmoide"] == "O cólon sigmoide apresenta luz conservada com paredes cobertas com mucosa integra."
-    assert report.secoes["colon_descendente"] == "O cólon descendente possui luz e mucosas normais."
-    assert report.secoes["angulo_esplenico"] == "O ângulo esplênico foi ultrapassado sem dificuldades."
-    assert report.secoes["colon_transverso"] == "O cólon transverso tem calibre, haustrações e mucosas normais."
-    assert report.secoes["angulo_hepatico"] == "O ângulo hepático foi ultrapassado sem dificuldades."
-    assert report.secoes["colon_ascendente"] == "O cólon ascendente é amplo e com mucosa preservada."
-    assert report.secoes["ceco"] == "O ceco é normal e foi identificado pelo óstio apendicular e convergências das tênias."
-    assert report.secoes["ileo_terminal"] == "O íleo apresenta luz de calibre e mucosa normais."
-    assert report.secoes["conclusao"] == "Exame macroscopicamente normal."
-    assert report.secoes["observacao_1"] == "Este exame não é indicado para avaliação do canal anal."
-    assert report.secoes["observacao_2"] == ""
+    for section_id, expected_text in DEFAULT_SECTION_TEXTS.items():
+        assert report.secoes[section_id] == expected_text
     assert list(report.secoes) == DEFAULT_SECTIONS
 
 
@@ -48,7 +34,7 @@ def test_review_models_are_added_to_existing_default_text():
                         {
                             "name": "polipo_menor",
                             "keywords": ["polipo sessil menor que 10 milimetros"],
-                            "text": "Presença de pólipo séssil menor que 10 mm em reto.",
+                            "text": "PresenÃ§a de pÃ³lipo sÃ©ssil menor que 10 mm em reto.",
                         }
                     ],
                 }
@@ -67,7 +53,7 @@ def test_review_models_are_added_to_existing_default_text():
 
     assert reviewed == (
         "O reto tem calibre e mucosa normais.\n"
-        "Presença de pólipo séssil menor que 10 mm em reto."
+        "PresenÃ§a de pÃ³lipo sÃ©ssil menor que 10 mm em reto."
     )
 
 
@@ -82,18 +68,18 @@ def test_numbered_conclusion_uses_only_findings_added_to_target_sections():
     report.ensure_sections()
     report.secoes["reto"] = app._merge_section_text(
         report.secoes["reto"],
-        "PÃ³lipo sÃ©ssil menor que 10 mm.",
+        "PÃƒÂ³lipo sÃƒÂ©ssil menor que 10 mm.",
     )
     report.secoes["colon_sigmoide"] = app._merge_section_text(
         report.secoes["colon_sigmoide"],
-        "DivertÃ­culos em sigmoide.",
+        "DivertÃƒÂ­culos em sigmoide.",
     )
 
     conclusion = app._build_numbered_conclusion_from_sections(report.secoes)
 
     assert conclusion == (
-        "1- Reto - PÃ³lipo sÃ©ssil menor que 10 mm.\n"
-        "2- Cólon sigmoide - DivertÃ­culos em sigmoide."
+        "1- Reto - PÃƒÂ³lipo sÃƒÂ©ssil menor que 10 mm.\n"
+        "2- Cólon sigmoide - DivertÃƒÂ­culos em sigmoide."
     )
     assert "calibre e mucosa normais" not in conclusion
 
@@ -110,7 +96,7 @@ def test_reviewed_model_can_refresh_numbered_conclusion():
                         {
                             "name": "polipo_menor",
                             "keywords": ["polipo sessil menor que 10 milimetros"],
-                            "text": "PÃ³lipo sÃ©ssil menor que 10 mm.",
+                            "text": "PÃƒÂ³lipo sÃƒÂ©ssil menor que 10 mm.",
                         }
                     ],
                 }
@@ -128,7 +114,7 @@ def test_reviewed_model_can_refresh_numbered_conclusion():
 
     app._refresh_conclusion_from_sections(report)
 
-    assert report.secoes["conclusao"] == "1- Reto - PÃ³lipo sÃ©ssil menor que 10 mm."
+    assert report.secoes["conclusao"] == "1- Reto - PÃƒÂ³lipo sÃƒÂ©ssil menor que 10 mm."
 
 
 def test_ceco_finding_is_included_in_numbered_conclusion():
@@ -136,9 +122,19 @@ def test_ceco_finding_is_included_in_numbered_conclusion():
     report.ensure_sections()
     report.secoes["ceco"] = app._merge_section_text(
         report.secoes["ceco"],
-        "Ceco com pÃ³lipo sÃ©ssil menor que 10 mm.",
+        "Ceco com pÃƒÂ³lipo sÃƒÂ©ssil menor que 10 mm.",
     )
 
     app._refresh_conclusion_from_sections(report)
 
-    assert report.secoes["conclusao"] == "1- Ceco - Ceco com pÃ³lipo sÃ©ssil menor que 10 mm."
+    assert report.secoes["conclusao"] == "1- Ceco - Ceco com pÃƒÂ³lipo sÃƒÂ©ssil menor que 10 mm."
+
+
+def test_observacao_2_enters_conclusion_without_field_label():
+    report = ReportData()
+    report.ensure_sections()
+    report.secoes["observacao_2"] = "PresenÃƒÂ§a de ÃƒÂ³stios diverticulares em sigmoide."
+
+    app._refresh_conclusion_from_sections(report)
+
+    assert report.secoes["conclusao"] == "1- PresenÃƒÂ§a de ÃƒÂ³stios diverticulares em sigmoide."

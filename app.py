@@ -447,7 +447,7 @@ CONCLUSION_SOURCE_SECTIONS = [
     ("colon_ascendente", "Cólon ascendente"),
     ("ceco", "Ceco"),
     ("ileo_terminal", "Íleo"),
-    ("observacao_2", "Observação 2"),
+    ("observacao_2", ""),
 ]
 
 
@@ -494,11 +494,12 @@ def _build_numbered_conclusion_from_sections(sections: dict[str, str]) -> str:
 
     for section_id, label in CONCLUSION_SOURCE_SECTIONS:
         for finding in _extract_conclusion_findings(section_id, sections.get(section_id, "")):
-            normalized_finding = _normalize_for_search(f"{label} - {finding}")
+            item_text = finding if not label else f"{label} - {finding}"
+            normalized_finding = _normalize_for_search(item_text)
             if not normalized_finding or normalized_finding in seen:
                 continue
             seen.add(normalized_finding)
-            items.append(f"{label} - {finding}")
+            items.append(item_text)
 
     return "\n".join(f"{idx}- {item}" for idx, item in enumerate(items, start=1))
 
