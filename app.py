@@ -433,8 +433,18 @@ def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, in
         model_text = engine._apply_placeholders(best.text, input_text or "").strip()
         if not model_text:
             return current_text
+        if _should_replace_default_with_model(section_id, current_text):
+            return model_text
         return _merge_section_text(current_text, model_text)
     return current_text
+
+
+DEFAULT_REPLACEMENT_SECTIONS = {
+    "indicacao",
+    "preparo_paciente",
+    "duracao",
+    "altura_atingida",
+}
 
 
 CONCLUSION_SOURCE_SECTIONS = [
@@ -467,6 +477,13 @@ def _merge_section_text(base_text: str, addition_text: str) -> str:
             merged_parts.append(addition)
             normalized_existing.add(normalized_addition)
     return "\n".join(merged_parts)
+
+
+def _should_replace_default_with_model(section_id: str, current_text: str) -> bool:
+    if section_id not in DEFAULT_REPLACEMENT_SECTIONS:
+        return False
+    default_text = DEFAULT_SECTION_TEXTS.get(section_id, "")
+    return str(current_text or "").strip() == str(default_text or "").strip()
 
 
 def _extract_conclusion_findings(section_id: str, text: str) -> list[str]:
@@ -1503,8 +1520,11 @@ def render_app() -> None:
                     or (str(current_text).strip() == previous_auto.strip())
                 )
                 if should_update and str(new_text).strip() and not _is_template_default(engine, section, new_text):
-                    base_text = default_text if (current_is_default or str(current_text).strip() == previous_auto.strip()) else current_text
-                    merged_text = _merge_section_text(base_text, new_text)
+                    if _should_replace_default_with_model(section, current_text):
+                        merged_text = str(new_text).strip()
+                    else:
+                        base_text = default_text if (current_is_default or str(current_text).strip() == previous_auto.strip()) else current_text
+                        merged_text = _merge_section_text(base_text, new_text)
                     report.secoes[section] = merged_text
                     st.session_state[f"sec_{section}"] = merged_text
             report.ensure_sections()

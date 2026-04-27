@@ -63,6 +63,61 @@ def test_merge_section_text_does_not_duplicate_same_model_text():
     assert merged == "Texto inicial.\nAchado."
 
 
+def test_review_models_replace_default_text_for_indicacao():
+    engine = TemplateEngine(
+        config={
+            "sections": [
+                {
+                    "id": "indicacao",
+                    "triggers": ["indicacao"],
+                    "default": "",
+                    "models": [
+                        {
+                            "name": "sangramento",
+                            "keywords": ["sangramento"],
+                            "text": "Exame indicado por quadro de sangramento digestivo baixo.",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    report = ReportData()
+    report.ensure_sections()
+
+    reviewed = app._apply_models_for_single_section(
+        engine=engine,
+        section_id="indicacao",
+        input_text="indicacao sangramento",
+        current_text=report.secoes["indicacao"],
+    )
+
+    assert reviewed == "Exame indicado por quadro de sangramento digestivo baixo."
+
+
+def test_generate_flow_replaces_default_text_for_duracao():
+    current_text = DEFAULT_SECTION_TEXTS["duracao"]
+    default_text = DEFAULT_SECTION_TEXTS["duracao"]
+    previous_auto = DEFAULT_SECTION_TEXTS["duracao"]
+    new_text = "DuraÃ§Ã£o do exame de aproximadamente 30 minutos."
+    current_is_default = str(current_text).strip() == str(default_text).strip()
+    should_update = (
+        not str(current_text).strip()
+        or current_is_default
+        or (str(current_text).strip() == previous_auto.strip())
+    )
+
+    merged_text = current_text
+    if should_update and str(new_text).strip():
+        if app._should_replace_default_with_model("duracao", current_text):
+            merged_text = str(new_text).strip()
+        else:
+            base_text = default_text if (current_is_default or str(current_text).strip() == previous_auto.strip()) else current_text
+            merged_text = app._merge_section_text(base_text, new_text)
+
+    assert merged_text == "DuraÃ§Ã£o do exame de aproximadamente 30 minutos."
+
+
 def test_numbered_conclusion_uses_only_findings_added_to_target_sections():
     report = ReportData()
     report.ensure_sections()
