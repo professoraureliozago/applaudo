@@ -118,6 +118,40 @@ def test_generate_flow_replaces_default_text_for_duracao():
     assert merged_text == "DuraÃ§Ã£o do exame de aproximadamente 30 minutos."
 
 
+def test_clear_exam_artifacts_removes_stale_media_and_pdf(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    image_file = tmp_path / "captured_images" / "exam_12" / "captura.jpg"
+    video_file = tmp_path / "captured_videos" / "exam_12" / "filmagem.mp4"
+    pdf_file = tmp_path / "saved_reports" / "exam_12.pdf"
+    image_file.parent.mkdir(parents=True, exist_ok=True)
+    video_file.parent.mkdir(parents=True, exist_ok=True)
+    pdf_file.parent.mkdir(parents=True, exist_ok=True)
+    image_file.write_bytes(b"img")
+    video_file.write_bytes(b"vid")
+    pdf_file.write_bytes(b"pdf")
+
+    app._clear_exam_artifacts(12)
+
+    assert not image_file.parent.exists()
+    assert not video_file.parent.exists()
+    assert not pdf_file.exists()
+
+
+def test_clear_exam_artifacts_preserves_other_exam_files(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    stale_file = tmp_path / "captured_images" / "exam_12" / "captura.jpg"
+    other_file = tmp_path / "captured_images" / "exam_13" / "captura.jpg"
+    stale_file.parent.mkdir(parents=True, exist_ok=True)
+    other_file.parent.mkdir(parents=True, exist_ok=True)
+    stale_file.write_bytes(b"old")
+    other_file.write_bytes(b"keep")
+
+    app._clear_exam_artifacts(12)
+
+    assert not stale_file.parent.exists()
+    assert other_file.exists()
+
+
 def test_numbered_conclusion_uses_only_findings_added_to_target_sections():
     report = ReportData()
     report.ensure_sections()

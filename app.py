@@ -402,6 +402,19 @@ def _clone_exam_media(source_exam_id: int, target_exam_id: int) -> list[str]:
     return copied_selected
 
 
+def _clear_exam_artifacts(exam_id: int) -> None:
+    image_dir = Path("captured_images") / f"exam_{exam_id}"
+    video_dir = Path("captured_videos") / f"exam_{exam_id}"
+    pdf_path = Path("saved_reports") / f"exam_{exam_id}.pdf"
+
+    if image_dir.exists():
+        shutil.rmtree(image_dir, ignore_errors=True)
+    if video_dir.exists():
+        shutil.rmtree(video_dir, ignore_errors=True)
+    if pdf_path.exists():
+        pdf_path.unlink(missing_ok=True)
+
+
 def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, input_text: str, current_text: str) -> str:
     section = next((s for s in engine.config.get("sections", []) if s.get("id") == section_id), None)
     if not section:
@@ -1263,6 +1276,7 @@ def render_app() -> None:
                         convenio=convenio,
                         executante=executante,
                     )
+                    _clear_exam_artifacts(exam.id)
                     st.session_state["current_exam_id"] = exam.id
                     st.session_state["selected_gallery_paths"] = []
                     st.success(f"Paciente {patient.name} pronto. Exame ativo #{exam.id} criado para autosave de mídias.")
@@ -1302,6 +1316,7 @@ def render_app() -> None:
                         convenio=selected_exam.get("convenio", ""),
                         executante=selected_exam.get("executante", ""),
                     )
+                    _clear_exam_artifacts(new_exam.id)
                     st.session_state["current_exam_id"] = new_exam.id
                     st.session_state["current_patient_id"] = selected_exam["patient_id"]
                     st.session_state["current_patient_name"] = selected_exam["patient_name"]
@@ -1341,6 +1356,7 @@ def render_app() -> None:
                     current = selected_exam["id"]
                     if pending == current:
                         delete_exam(current)
+                        _clear_exam_artifacts(current)
                         st.session_state["delete_exam_pending"] = None
                         if st.session_state.get("current_exam_id") == current:
                             st.session_state["current_exam_id"] = None
@@ -1602,6 +1618,7 @@ def render_app() -> None:
                         executante=st.session_state.get("draft_executante_name", report.medico_executante or "Dr(a)."),
                     )
                     exam_id = created.id
+                    _clear_exam_artifacts(exam_id)
                 moved_images = reassign_images_to_exam(st.session_state.get("selected_gallery_paths", []), exam_id)
                 for image_path in moved_images:
                     add_exam_image(exam_id, str(image_path), get_image_caption(image_path, exam_id=exam_id))
