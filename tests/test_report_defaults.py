@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from src.laudo_app.models import DEFAULT_SECTION_TEXTS, DEFAULT_SECTIONS, ReportData
 from src.laudo_app.template_engine import TemplateEngine
 
@@ -150,6 +152,23 @@ def test_clear_exam_artifacts_preserves_other_exam_files(tmp_path, monkeypatch):
 
     assert not stale_file.parent.exists()
     assert other_file.exists()
+
+
+def test_move_draft_videos_to_exam_moves_unassigned_video(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    draft_video = tmp_path / "captured_videos" / "unassigned" / "filmagem.webm"
+    draft_video.parent.mkdir(parents=True, exist_ok=True)
+    draft_video.write_bytes(b"video")
+    saved_records: list[tuple[int, str]] = []
+    monkeypatch.setattr(app, "add_exam_video", lambda exam_id, file_path: saved_records.append((exam_id, file_path)))
+
+    moved = app._move_draft_videos_to_exam(18)
+
+    expected = Path("captured_videos") / "exam_18" / "filmagem.webm"
+    assert moved == [expected]
+    assert saved_records == [(18, str(expected))]
+    assert (tmp_path / expected).exists()
+    assert not draft_video.exists()
 
 
 def test_numbered_conclusion_uses_only_findings_added_to_target_sections():

@@ -415,6 +415,26 @@ def _clear_exam_artifacts(exam_id: int) -> None:
         pdf_path.unlink(missing_ok=True)
 
 
+def _move_draft_videos_to_exam(exam_id: int) -> list[Path]:
+    draft_video_dir = Path("captured_videos") / "unassigned"
+    exam_video_dir = Path("captured_videos") / f"exam_{exam_id}"
+    if not draft_video_dir.exists():
+        return []
+
+    exam_video_dir.mkdir(parents=True, exist_ok=True)
+    moved: list[Path] = []
+    for draft_video in sorted(draft_video_dir.glob("*")):
+        if not draft_video.is_file() or draft_video.suffix.lower() not in {".mp4", ".webm", ".mov"}:
+            continue
+        target = exam_video_dir / draft_video.name
+        if target.exists():
+            target = exam_video_dir / f"{target.stem}_{datetime.now().strftime('%H%M%S%f')}{target.suffix}"
+        shutil.move(str(draft_video), str(target))
+        add_exam_video(exam_id, str(target))
+        moved.append(target)
+    return moved
+
+
 def _apply_models_for_single_section(engine: TemplateEngine, section_id: str, input_text: str, current_text: str) -> str:
     section = next((s for s in engine.config.get("sections", []) if s.get("id") == section_id), None)
     if not section:
@@ -1277,6 +1297,7 @@ def render_app() -> None:
                         executante=executante,
                     )
                     _clear_exam_artifacts(exam.id)
+                    _move_draft_videos_to_exam(exam.id)
                     st.session_state["current_exam_id"] = exam.id
                     st.session_state["selected_gallery_paths"] = []
                     st.success(f"Paciente {patient.name} pronto. Exame ativo #{exam.id} criado para autosave de mídias.")
@@ -1317,6 +1338,7 @@ def render_app() -> None:
                         executante=selected_exam.get("executante", ""),
                     )
                     _clear_exam_artifacts(new_exam.id)
+                    _move_draft_videos_to_exam(new_exam.id)
                     st.session_state["current_exam_id"] = new_exam.id
                     st.session_state["current_patient_id"] = selected_exam["patient_id"]
                     st.session_state["current_patient_name"] = selected_exam["patient_name"]
