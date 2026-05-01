@@ -10,8 +10,8 @@ _COMPONENT_DIR = Path(__file__).resolve().parent / "components" / "video_recorde
 _video_recorder = components.declare_component("video_recorder", path=str(_COMPONENT_DIR))
 
 
-def render_video_recorder(*, key: str) -> tuple[bytes, str, int] | None:
-    value: dict[str, Any] | None = _video_recorder(key=key, default=None)
+def render_video_recorder(*, key: str, ack_timestamp: int = 0) -> tuple[bytes, str, int] | None:
+    value: dict[str, Any] | None = _video_recorder(key=key, ack_timestamp=int(ack_timestamp or 0), default=None)
     if not value:
         return None
     data_url = value.get("data_url")

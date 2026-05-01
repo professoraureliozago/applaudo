@@ -946,7 +946,10 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
     st.markdown("#### Filmagem do exame")
     st.caption("Clique em iniciar/parar no gravador abaixo para capturar a filmagem do exame.")
-    video_record = render_video_recorder(key=f"video-recorder-{exam_id or 'draft'}")
+    video_record = render_video_recorder(
+        key=f"video-recorder-{exam_id or 'draft'}",
+        ack_timestamp=int(st.session_state.get("last_video_capture_ts", 0) or 0),
+    )
     if video_record:
         video_bytes, mime_type, capture_ts = video_record
         if capture_ts and capture_ts != st.session_state.get("last_video_capture_ts"):

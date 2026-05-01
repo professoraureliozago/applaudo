@@ -80,6 +80,8 @@
             statusText: "Aguardando camera...",
             pendingValue: null,
             lastDeliveredTimestamp: 0,
+            acknowledgedTimestamp: 0,
+            lastSentAt: 0,
             lastUpdatedAt: 0,
             ownerFrameId: null,
           }
@@ -272,10 +274,20 @@
         if (!pending) {
           return
         }
-        if (pending.timestamp === session.lastDeliveredTimestamp) {
+
+        if (session.acknowledgedTimestamp >= pending.timestamp) {
+          session.lastDeliveredTimestamp = pending.timestamp
+          session.pendingValue = null
+          session.lastSentAt = 0
           return
         }
-        session.lastDeliveredTimestamp = pending.timestamp
+
+        const now = Date.now()
+        if (session.lastSentAt && now - session.lastSentAt < 500) {
+          return
+        }
+
+        session.lastSentAt = now
         setValue(pending)
       }
 
@@ -334,8 +346,9 @@
               timestamp: Date.now(),
             }
             session.status = "idle"
-            session.statusText = `Gravacao finalizada (${Math.round(blob.size / 1024)} KB)`
+            session.statusText = `Gravacao finalizada (${Math.round(blob.size / 1024)} KB) - enviando...`
             session.chunks = []
+            session.lastSentAt = 0
             session.lastUpdatedAt = Date.now()
             flushPendingValue()
             applySessionState()
@@ -390,11 +403,36 @@
         }
       }
 
+      function onRender(args) {
+        const session = getRecorderSession()
+        const ackTimestamp = Number(args?.ack_timestamp || 0)
+        if (Number.isFinite(ackTimestamp) && ackTimestamp > 0) {
+          session.acknowledgedTimestamp = ackTimestamp
+          if (session.pendingValue && ackTimestamp >= session.pendingValue.timestamp) {
+            session.lastDeliveredTimestamp = session.pendingValue.timestamp
+            session.pendingValue = null
+            session.lastSentAt = 0
+            if (session.status === "idle") {
+              session.statusText = "Video salvo com sucesso."
+            }
+          }
+        }
+        flushPendingValue()
+        applySessionState()
+      }
+
       startBtn.addEventListener("click", startRecord)
       stopBtn.addEventListener("click", stopRecord)
       video.addEventListener("loadedmetadata", updateFrameHeight)
       window.addEventListener("resize", updateFrameHeight)
       window.addEventListener("beforeunload", stopSyncLoop)
+      window.addEventListener("message", (event) => {
+        const message = event.data
+        if (!message || message.type !== "streamlit:render") {
+          return
+        }
+        onRender(message.args || {})
+      })
 
       setReady()
       setHeight(520)
