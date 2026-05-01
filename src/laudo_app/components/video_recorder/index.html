@@ -41,8 +41,6 @@
       const frameId = `video-recorder-${Math.random().toString(36).slice(2)}`
 
       let stream = null
-      let syncTimer = null
-
       function getHostWindow() {
         try {
           if (window.parent && window.parent !== window) {
@@ -268,7 +266,7 @@
         }
       }
 
-      function flushPendingValue() {
+      function flushPendingValue(force = false) {
         const session = getRecorderSession()
         const pending = session.pendingValue
         if (!pending) {
@@ -283,7 +281,7 @@
         }
 
         const now = Date.now()
-        if (session.lastSentAt && now - session.lastSentAt < 500) {
+        if (!force && session.lastSentAt && now - session.lastSentAt < 1200) {
           return
         }
 
@@ -350,7 +348,7 @@
             session.chunks = []
             session.lastSentAt = 0
             session.lastUpdatedAt = Date.now()
-            flushPendingValue()
+            flushPendingValue(true)
             applySessionState()
           }
           reader.readAsDataURL(blob)
@@ -386,23 +384,6 @@
         finalizeRecorder("Finalizando gravacao...")
       }
 
-      function startSyncLoop() {
-        if (syncTimer) {
-          clearInterval(syncTimer)
-        }
-        syncTimer = window.setInterval(() => {
-          flushPendingValue()
-          applySessionState()
-        }, 300)
-      }
-
-      function stopSyncLoop() {
-        if (syncTimer) {
-          clearInterval(syncTimer)
-          syncTimer = null
-        }
-      }
-
       function onRender(args) {
         const session = getRecorderSession()
         const ackTimestamp = Number(args?.ack_timestamp || 0)
@@ -417,7 +398,7 @@
             }
           }
         }
-        flushPendingValue()
+        flushPendingValue(false)
         applySessionState()
       }
 
@@ -425,7 +406,6 @@
       stopBtn.addEventListener("click", stopRecord)
       video.addEventListener("loadedmetadata", updateFrameHeight)
       window.addEventListener("resize", updateFrameHeight)
-      window.addEventListener("beforeunload", stopSyncLoop)
       window.addEventListener("message", (event) => {
         const message = event.data
         if (!message || message.type !== "streamlit:render") {
@@ -436,7 +416,6 @@
 
       setReady()
       setHeight(520)
-      startSyncLoop()
       ensureStream().then(() => {
         applySessionState()
       }).catch((error) => {
