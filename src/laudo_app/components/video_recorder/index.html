@@ -28,10 +28,10 @@
       <video id="preview" autoplay playsinline muted></video>
     </div>
     <div class="controls">
-      <button class="start" id="startBtn">Iniciar gravação</button>
-      <button class="stop" id="stopBtn" disabled>Parar gravação</button>
+      <button class="start" id="startBtn">Iniciar gravacao</button>
+      <button class="stop" id="stopBtn" disabled>Parar gravacao</button>
     </div>
-    <div class="status" id="status">Aguardando câmera…</div>
+    <div class="status" id="status">Aguardando camera...</div>
 
     <script>
       const video = document.getElementById("preview")
@@ -43,67 +43,243 @@
       let recorder = null
       let chunks = []
 
+      function getHostWindow() {
+        try {
+          if (window.parent && window.parent !== window) {
+            void window.parent.location.href
+            return window.parent
+          }
+        } catch (error) {}
+        return window
+      }
+
+      function getMediaHub() {
+        const host = getHostWindow()
+        if (!host.__applaudoMediaHub) {
+          host.__applaudoMediaHub = {
+            videoStream: null,
+            videoStreamPromise: null,
+            audioStream: null,
+            audioStreamPromise: null,
+            avStream: null,
+          }
+        }
+        return host.__applaudoMediaHub
+      }
+
       function post(type, payload = {}) {
         window.parent.postMessage({ isStreamlitMessage: true, type, ...payload }, "*")
       }
-      function setReady() { post("streamlit:componentReady", { apiVersion: 1 }) }
-      function setHeight(h) { post("streamlit:setFrameHeight", { height: h }) }
-      function setValue(v) { post("streamlit:setComponentValue", { value: v }) }
+
+      function setReady() {
+        post("streamlit:componentReady", { apiVersion: 1 })
+      }
+
+      function setHeight(height) {
+        post("streamlit:setFrameHeight", { height })
+      }
+
+      function setValue(value) {
+        post("streamlit:setComponentValue", { value })
+      }
+
+      function hasLiveTrack(mediaStream, kind) {
+        return Boolean(
+          mediaStream &&
+          mediaStream.getTracks().some((track) => track.kind === kind && track.readyState === "live"),
+        )
+      }
+
+      function buildPreviewStream(mediaStream) {
+        if (!mediaStream) return null
+        const videoTracks = mediaStream.getVideoTracks().filter((track) => track.readyState === "live")
+        return videoTracks.length ? new MediaStream(videoTracks) : null
+      }
+
+      function getSharedVideoSource() {
+        const hub = getMediaHub()
+        if (hasLiveTrack(hub.avStream, "video")) return hub.avStream
+        if (hasLiveTrack(hub.videoStream, "video")) return hub.videoStream
+        return null
+      }
+
+      function getSharedAudioSource() {
+        const hub = getMediaHub()
+        if (hasLiveTrack(hub.avStream, "audio")) return hub.avStream
+        if (hasLiveTrack(hub.audioStream, "audio")) return hub.audioStream
+        return null
+      }
+
+      async function ensureSharedVideoStream() {
+        const existing = getSharedVideoSource()
+        if (existing) {
+          return existing
+        }
+
+        const hub = getMediaHub()
+        if (hub.videoStreamPromise) {
+          return hub.videoStreamPromise
+        }
+
+        hub.videoStreamPromise = navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        }).then((mediaStream) => {
+          hub.videoStream = mediaStream
+          return mediaStream
+        }).finally(() => {
+          hub.videoStreamPromise = null
+        })
+
+        return hub.videoStreamPromise
+      }
+
+      async function ensureSharedAudioStream() {
+        const existing = getSharedAudioSource()
+        if (existing) {
+          return existing
+        }
+
+        const hub = getMediaHub()
+        if (hub.audioStreamPromise) {
+          return hub.audioStreamPromise
+        }
+
+        hub.audioStreamPromise = navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: true,
+        }).then((mediaStream) => {
+          hub.audioStream = mediaStream
+          return mediaStream
+        }).finally(() => {
+          hub.audioStreamPromise = null
+        })
+
+        return hub.audioStreamPromise
+      }
+
       function updateFrameHeight() {
         const ratio = video.videoWidth && video.videoHeight ? (video.videoHeight / video.videoWidth) : (9 / 16)
         const videoHeight = Math.max(280, Math.floor(video.clientWidth * ratio))
         setHeight(videoHeight + 120)
       }
 
+      function pickRecorderMimeType() {
+        const candidates = [
+          "video/webm;codecs=vp9,opus",
+          "video/webm;codecs=vp8,opus",
+          "video/webm;codecs=h264,opus",
+          "video/webm",
+        ]
+        if (typeof MediaRecorder === "undefined") {
+          return ""
+        }
+        for (const candidate of candidates) {
+          if (!MediaRecorder.isTypeSupported || MediaRecorder.isTypeSupported(candidate)) {
+            return candidate
+          }
+        }
+        return ""
+      }
+
       async function ensureStream() {
-        if (stream) return
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        video.srcObject = stream
-        statusEl.textContent = "Câmera pronta"
+        if (stream && stream.getTracks().some((track) => track.readyState === "live")) {
+          return
+        }
+
+        const videoSource = getSharedVideoSource() || await ensureSharedVideoStream()
+        let audioSource = getSharedAudioSource()
+        if (!audioSource) {
+          try {
+            audioSource = await ensureSharedAudioStream()
+          } catch (error) {
+            audioSource = null
+          }
+        }
+
+        const videoTracks = videoSource ? videoSource.getVideoTracks().filter((track) => track.readyState === "live") : []
+        const audioTracks = audioSource ? audioSource.getAudioTracks().filter((track) => track.readyState === "live") : []
+        if (!videoTracks.length) {
+          throw new Error("Nenhuma camera disponivel para gravacao.")
+        }
+
+        stream = new MediaStream([...videoTracks, ...audioTracks])
+        getMediaHub().avStream = stream
+        video.srcObject = buildPreviewStream(stream)
+        statusEl.textContent = audioTracks.length ? "Camera pronta" : "Camera pronta (sem audio)"
         updateFrameHeight()
+      }
+
+      function resetButtons() {
+        startBtn.disabled = false
+        stopBtn.disabled = true
+      }
+
+      function finalizeRecorder(statusText) {
+        if (recorder && recorder.state === "recording") {
+          statusEl.textContent = statusText || "Finalizando gravacao..."
+          try {
+            recorder.requestData()
+          } catch (error) {}
+          recorder.stop()
+        }
       }
 
       async function startRecord() {
         await ensureStream()
         chunks = []
-        recorder = new MediaRecorder(stream, { mimeType: "video/webm" })
-        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data) }
+        const mimeType = pickRecorderMimeType()
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            chunks.push(event.data)
+          }
+        }
+        recorder.onerror = (event) => {
+          statusEl.textContent = `Erro na gravacao: ${event?.error?.message || "erro desconhecido"}`
+          resetButtons()
+        }
         recorder.onstop = async () => {
-          const blob = new Blob(chunks, { type: "video/webm" })
+          if (!chunks.length) {
+            statusEl.textContent = "Nenhum dado de video foi capturado."
+            resetButtons()
+            return
+          }
+          const outputMimeType = mimeType || "video/webm"
+          const blob = new Blob(chunks, { type: outputMimeType })
           const reader = new FileReader()
           reader.onloadend = () => {
             setValue({
-              mime_type: "video/webm",
+              mime_type: outputMimeType,
               data_url: reader.result,
               timestamp: Date.now(),
             })
-            statusEl.textContent = `Gravação finalizada (${Math.round(blob.size / 1024)} KB)`
-            startBtn.disabled = false
-            stopBtn.disabled = true
+            statusEl.textContent = `Gravacao finalizada (${Math.round(blob.size / 1024)} KB)`
+            resetButtons()
           }
           reader.readAsDataURL(blob)
         }
-        recorder.start()
+        recorder.start(1000)
         statusEl.textContent = "Gravando..."
         startBtn.disabled = true
         stopBtn.disabled = false
       }
 
       function stopRecord() {
-        if (recorder && recorder.state === "recording") {
-          statusEl.textContent = "Finalizando gravação..."
-          recorder.stop()
-        }
+        finalizeRecorder("Finalizando gravacao...")
       }
 
       startBtn.addEventListener("click", startRecord)
       stopBtn.addEventListener("click", stopRecord)
       video.addEventListener("loadedmetadata", updateFrameHeight)
       window.addEventListener("resize", updateFrameHeight)
+      window.addEventListener("pagehide", () => finalizeRecorder("Finalizando gravacao..."))
 
       setReady()
       setHeight(520)
-      ensureStream().catch((e) => { statusEl.textContent = `Erro câmera: ${e.message || e}` })
+      ensureStream().catch((error) => {
+        statusEl.textContent = `Erro camera: ${error?.message || error}`
+      })
     </script>
   </body>
 </html>
