@@ -67,6 +67,7 @@
         if (!host.__applaudoMediaHub.videoRecorderSession) {
           host.__applaudoMediaHub.videoRecorderSession = {
             stream: null,
+            previewStream: null,
             recorder: null,
             chunks: [],
             finalPayload: null,
@@ -109,6 +110,23 @@
         return videoTracks.length ? new MediaStream(videoTracks) : null
       }
 
+      function hasLiveVideo(mediaStream) {
+        return Boolean(
+          mediaStream &&
+          mediaStream.getVideoTracks &&
+          mediaStream.getVideoTracks().some((track) => track.readyState === "live"),
+        )
+      }
+
+      function attachPreview(session) {
+        if (!hasLiveVideo(session.previewStream)) {
+          session.previewStream = buildPreviewStream(session.stream)
+        }
+        if (session.previewStream && video.srcObject !== session.previewStream) {
+          video.srcObject = session.previewStream
+        }
+      }
+
       async function ensureSharedVideoStream() {
         const hub = getMediaHub()
         const existing = hub.videoStream
@@ -133,8 +151,7 @@
       async function ensureStream() {
         const session = getRecorderSession()
         if (session.stream && session.stream.getVideoTracks().some((track) => track.readyState === "live")) {
-          const previewStream = buildPreviewStream(session.stream)
-          if (previewStream) video.srcObject = previewStream
+          attachPreview(session)
           statusEl.textContent = session.statusText || "Camera pronta"
           updateFrameHeight()
           return session.stream
@@ -142,8 +159,8 @@
 
         const sharedStream = await ensureSharedVideoStream()
         session.stream = sharedStream
-        const previewStream = buildPreviewStream(sharedStream)
-        if (previewStream) video.srcObject = previewStream
+        session.previewStream = null
+        attachPreview(session)
         session.statusText = "Camera pronta"
         statusEl.textContent = session.statusText
         updateFrameHeight()
