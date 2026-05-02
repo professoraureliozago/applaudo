@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body { margin: 0; font-family: sans-serif; background: transparent; width: fit-content; }
-      .preview-wrap {
-        max-width: 640px;
-      }
+      .preview-wrap { max-width: 640px; }
       video {
         width: 100%;
         height: auto;
@@ -38,10 +36,7 @@
       const startBtn = document.getElementById("startBtn")
       const stopBtn = document.getElementById("stopBtn")
       const statusEl = document.getElementById("status")
-
-      let stream = null
-      let recorder = null
-      let chunks = []
+      const frameId = `video-recorder-${Math.random().toString(36).slice(2)}`
 
       function post(type, payload = {}) {
         window.parent.postMessage({ isStreamlitMessage: true, type, ...payload }, "*")
@@ -49,52 +44,198 @@
       function setReady() { post("streamlit:componentReady", { apiVersion: 1 }) }
       function setHeight(h) { post("streamlit:setFrameHeight", { height: h }) }
       function setValue(v) { post("streamlit:setComponentValue", { value: v }) }
+
+      function getHostWindow() {
+        try {
+          if (window.parent && window.parent !== window) {
+            void window.parent.location.href
+            return window.parent
+          }
+        } catch (_) {}
+        return window
+      }
+
+      function getMediaHub() {
+        const host = getHostWindow()
+        if (!host.__applaudoMediaHub) {
+          host.__applaudoMediaHub = {
+            videoStream: null,
+            videoStreamPromise: null,
+            videoRecorderSession: null,
+          }
+        }
+        if (!host.__applaudoMediaHub.videoRecorderSession) {
+          host.__applaudoMediaHub.videoRecorderSession = {
+            stream: null,
+            recorder: null,
+            chunks: [],
+            finalPayload: null,
+            deliveredTimestamp: 0,
+            statusText: "Aguardando camera...",
+            ownerFrameId: null,
+          }
+        }
+        return host.__applaudoMediaHub
+      }
+
+      function getRecorderSession() {
+        return getMediaHub().videoRecorderSession
+      }
+
       function updateFrameHeight() {
         const ratio = video.videoWidth && video.videoHeight ? (video.videoHeight / video.videoWidth) : (9 / 16)
         const videoHeight = Math.max(280, Math.floor(video.clientWidth * ratio))
         setHeight(videoHeight + 120)
       }
 
+      function pickRecorderMimeType() {
+        const candidates = [
+          "video/webm;codecs=vp8",
+          "video/webm;codecs=vp9",
+          "video/webm",
+        ]
+        if (typeof MediaRecorder === "undefined") return ""
+        for (const candidate of candidates) {
+          if (!MediaRecorder.isTypeSupported || MediaRecorder.isTypeSupported(candidate)) {
+            return candidate
+          }
+        }
+        return ""
+      }
+
+      function buildPreviewStream(mediaStream) {
+        if (!mediaStream) return null
+        const videoTracks = mediaStream.getVideoTracks().filter((track) => track.readyState === "live")
+        return videoTracks.length ? new MediaStream(videoTracks) : null
+      }
+
+      async function ensureSharedVideoStream() {
+        const hub = getMediaHub()
+        const existing = hub.videoStream
+        if (existing && existing.getVideoTracks().some((track) => track.readyState === "live")) {
+          return existing
+        }
+        if (hub.videoStreamPromise) {
+          return hub.videoStreamPromise
+        }
+        hub.videoStreamPromise = navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        }).then((mediaStream) => {
+          hub.videoStream = mediaStream
+          return mediaStream
+        }).finally(() => {
+          hub.videoStreamPromise = null
+        })
+        return hub.videoStreamPromise
+      }
+
       async function ensureStream() {
-        if (stream) return
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        video.srcObject = stream
-        statusEl.textContent = "Camera pronta"
+        const session = getRecorderSession()
+        if (session.stream && session.stream.getVideoTracks().some((track) => track.readyState === "live")) {
+          const previewStream = buildPreviewStream(session.stream)
+          if (previewStream) video.srcObject = previewStream
+          statusEl.textContent = session.statusText || "Camera pronta"
+          updateFrameHeight()
+          return session.stream
+        }
+
+        const sharedStream = await ensureSharedVideoStream()
+        session.stream = sharedStream
+        const previewStream = buildPreviewStream(sharedStream)
+        if (previewStream) video.srcObject = previewStream
+        session.statusText = "Camera pronta"
+        statusEl.textContent = session.statusText
         updateFrameHeight()
+        return sharedStream
+      }
+
+      function applySessionState() {
+        const session = getRecorderSession()
+        statusEl.textContent = session.statusText || "Camera pronta"
+        const isRecording = Boolean(session.recorder && session.recorder.state === "recording")
+        startBtn.disabled = isRecording
+        stopBtn.disabled = !isRecording
+      }
+
+      function deliverFinalPayload() {
+        const session = getRecorderSession()
+        const payload = session.finalPayload
+        if (!payload) return
+        if (payload.timestamp === session.deliveredTimestamp) return
+        session.deliveredTimestamp = payload.timestamp
+        setValue(payload)
       }
 
       async function startRecord() {
-        await ensureStream()
-        chunks = []
-        recorder = new MediaRecorder(stream, { mimeType: "video/webm" })
-        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data) }
-        recorder.onstop = async () => {
-          const blob = new Blob(chunks, { type: "video/webm" })
+        const activeStream = await ensureStream()
+        const session = getRecorderSession()
+        if (session.recorder && session.recorder.state === "recording") {
+          applySessionState()
+          return
+        }
+
+        session.chunks = []
+        session.finalPayload = null
+        session.ownerFrameId = frameId
+        const mimeType = pickRecorderMimeType()
+        const recorder = mimeType ? new MediaRecorder(activeStream, { mimeType }) : new MediaRecorder(activeStream)
+        const outputMimeType = recorder.mimeType || mimeType || "video/webm"
+        session.recorder = recorder
+        session.statusText = "Gravando..."
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            session.chunks.push(event.data)
+          }
+        }
+        recorder.onerror = (event) => {
+          session.statusText = `Erro na gravacao: ${event?.error?.message || "erro desconhecido"}`
+          session.recorder = null
+          applySessionState()
+        }
+        recorder.onstop = () => {
+          const recordedChunks = [...session.chunks]
+          session.recorder = null
+          if (!recordedChunks.length) {
+            session.statusText = "Nenhum dado de video foi capturado."
+            applySessionState()
+            return
+          }
+          const blob = new Blob(recordedChunks, { type: outputMimeType })
           const reader = new FileReader()
           reader.onloadend = () => {
-            setValue({
-              mime_type: "video/webm",
+            session.finalPayload = {
+              mime_type: outputMimeType,
               data_url: reader.result,
               timestamp: Date.now(),
-            })
-            statusEl.textContent = `Gravacao finalizada (${Math.round(blob.size / 1024)} KB)`
-            startBtn.disabled = false
-            stopBtn.disabled = true
+            }
+            session.statusText = `Gravacao finalizada (${Math.round(blob.size / 1024)} KB)`
+            deliverFinalPayload()
+            applySessionState()
           }
           reader.readAsDataURL(blob)
         }
-        recorder.start()
-        statusEl.textContent = "Gravando..."
-        startBtn.disabled = true
-        stopBtn.disabled = false
+        recorder.start(1000)
+        applySessionState()
       }
 
       function stopRecord() {
-        if (recorder && recorder.state === "recording") {
-          statusEl.textContent = "Finalizando gravacao..."
-          recorder.stop()
+        const session = getRecorderSession()
+        if (session.recorder && session.recorder.state === "recording") {
+          session.statusText = "Finalizando gravacao..."
+          try { session.recorder.requestData() } catch (_) {}
+          session.recorder.stop()
+          applySessionState()
         }
       }
+
+      window.addEventListener("message", async (event) => {
+        const message = event.data
+        if (!message || message.type !== "streamlit:render") return
+        await ensureStream()
+        deliverFinalPayload()
+        applySessionState()
+      })
 
       startBtn.addEventListener("click", startRecord)
       stopBtn.addEventListener("click", stopRecord)
@@ -103,7 +244,11 @@
 
       setReady()
       setHeight(520)
-      ensureStream().catch((e) => { statusEl.textContent = `Erro camera: ${e.message || e}` })
+      ensureStream().catch((error) => {
+        const session = getRecorderSession()
+        session.statusText = `Erro camera: ${error?.message || error}`
+        applySessionState()
+      })
     </script>
   </body>
 </html>
