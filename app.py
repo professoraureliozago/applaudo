@@ -977,39 +977,28 @@ def render_image_capture_tab(exam_id: int | None) -> None:
 
     st.markdown("#### Filmagem do exame")
     st.caption("Clique em iniciar/parar no gravador abaixo para capturar a filmagem do exame.")
-    video_record = render_video_recorder(
-        key=f"video-recorder-{exam_id or 'draft'}",
-        ack_event_id=str(st.session_state.get("last_video_event_ack", "") or ""),
-    )
+    video_record = render_video_recorder(key=f"video-recorder-{exam_id or 'draft'}")
     if video_record:
-        event_id = str(video_record.get("event_id", "") or "")
-        event_kind = str(video_record.get("event_kind", "") or "")
-        session_id = str(video_record.get("session_id", "") or "")
-        mime_type = str(video_record.get("mime_type", "video/webm") or "video/webm")
-        if event_id and event_id != st.session_state.get("last_video_event_ack"):
-            if event_kind == "chunk":
-                chunk_bytes = video_record.get("data", b"")
-                if isinstance(chunk_bytes, (bytes, bytearray)) and chunk_bytes:
-                    _append_video_chunk(
-                        exam_id=exam_id,
-                        session_id=session_id,
-                        mime_type=mime_type,
-                        chunk_bytes=bytes(chunk_bytes),
-                    )
-                    st.session_state["last_video_event_ack"] = event_id
-            elif event_kind == "finalize":
-                final_path = _finalize_video_chunks(
-                    exam_id=exam_id,
-                    session_id=session_id,
-                    mime_type=mime_type,
-                )
-                st.session_state["last_video_event_ack"] = event_id
-                if final_path:
-                    if exam_id:
-                        add_exam_video(exam_id, str(final_path))
-                        st.success(f"Filmagem salva: {final_path.name}")
-                    else:
-                        st.success(f"Filmagem salva em rascunho: {final_path.name}")
+        video_bytes, mime_type, capture_ts = video_record
+        if capture_ts and capture_ts != st.session_state.get("last_video_capture_ts"):
+            st.session_state["last_video_capture_ts"] = capture_ts
+            if not exam_id:
+                video_dir = Path("captured_videos") / "unassigned"
+                video_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                suffix = ".webm" if "webm" in mime_type else ".mp4"
+                video_path = video_dir / f"filmagem_{timestamp}{suffix}"
+                video_path.write_bytes(video_bytes)
+                st.success(f"Filmagem salva em rascunho: {video_path.name}")
+            else:
+                video_dir = Path("captured_videos") / f"exam_{exam_id}"
+                video_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                suffix = ".webm" if "webm" in mime_type else ".mp4"
+                video_path = video_dir / f"filmagem_{timestamp}{suffix}"
+                video_path.write_bytes(video_bytes)
+                add_exam_video(exam_id, str(video_path))
+                st.success(f"Filmagem salva: {video_path.name}")
 
     st.markdown("---")
     st.markdown("### Galeria de imagens salvas")
@@ -1142,7 +1131,6 @@ def render_app() -> None:
     st.session_state.setdefault("last_auto_sections", {})
     st.session_state.setdefault("cleaned_unassigned_once", False)
     st.session_state.setdefault("last_video_capture_ts", 0)
-    st.session_state.setdefault("last_video_event_ack", "")
     st.session_state.setdefault("last_webrtc_capture_ts", 0)
     st.session_state.setdefault("last_continuous_audio_ts", 0)
     st.session_state.setdefault("audio_metrics", {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0})
@@ -1189,7 +1177,6 @@ def render_app() -> None:
             st.session_state["new_patient_name_input"] = ""
             st.session_state["selected_existing_patient_id"] = None
             st.session_state["last_video_capture_ts"] = 0
-            st.session_state["last_video_event_ack"] = ""
             st.session_state["last_webrtc_capture_ts"] = 0
             st.session_state["last_continuous_audio_ts"] = 0
             st.session_state["audio_metrics"] = {"chunks_processed": 0, "commands_detected": 0, "transcription_failures": 0}
