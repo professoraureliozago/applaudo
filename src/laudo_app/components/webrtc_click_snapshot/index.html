@@ -70,30 +70,6 @@
       let requestedWidth = 960
       let requestedHeight = 540
 
-      function getHostWindow() {
-        try {
-          if (window.parent && window.parent !== window) {
-            void window.parent.location.href
-            return window.parent
-          }
-        } catch (error) {}
-        return window
-      }
-
-      function getMediaHub() {
-        const host = getHostWindow()
-        if (!host.__applaudoMediaHub) {
-          host.__applaudoMediaHub = {
-            videoStream: null,
-            videoStreamPromise: null,
-            audioStream: null,
-            audioStreamPromise: null,
-            avStream: null,
-          }
-        }
-        return host.__applaudoMediaHub
-      }
-
       function postToStreamlit(type, payload = {}) {
         window.parent.postMessage(
           {
@@ -115,54 +91,6 @@
 
       function setComponentReady() {
         postToStreamlit("streamlit:componentReady", { apiVersion: 1 })
-      }
-
-      function hasLiveTrack(mediaStream, kind) {
-        return Boolean(
-          mediaStream &&
-          mediaStream.getTracks().some((track) => track.kind === kind && track.readyState === "live"),
-        )
-      }
-
-      function getSharedVideoSource() {
-        const hub = getMediaHub()
-        if (hasLiveTrack(hub.avStream, "video")) return hub.avStream
-        if (hasLiveTrack(hub.videoStream, "video")) return hub.videoStream
-        return null
-      }
-
-      function buildPreviewStream(mediaStream) {
-        if (!mediaStream) return null
-        const videoTracks = mediaStream.getVideoTracks().filter((track) => track.readyState === "live")
-        return videoTracks.length ? new MediaStream(videoTracks) : null
-      }
-
-      async function ensureSharedVideoStream() {
-        const existing = getSharedVideoSource()
-        if (existing) {
-          return existing
-        }
-
-        const hub = getMediaHub()
-        if (hub.videoStreamPromise) {
-          return hub.videoStreamPromise
-        }
-
-        clearError()
-        hub.videoStreamPromise = navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: requestedWidth },
-            height: { ideal: requestedHeight },
-          },
-          audio: false,
-        }).then((mediaStream) => {
-          hub.videoStream = mediaStream
-          return mediaStream
-        }).finally(() => {
-          hub.videoStreamPromise = null
-        })
-
-        return hub.videoStreamPromise
       }
 
       function updateHeight() {
@@ -190,21 +118,17 @@
         if (streamPromise) {
           return streamPromise
         }
-
-        const sharedStream = getSharedVideoSource()
-        if (sharedStream) {
-          stream = sharedStream
-          video.srcObject = buildPreviewStream(sharedStream)
-          await video.play()
-          updateHeight()
-          return
-        }
-
         clearError()
         try {
-          streamPromise = ensureSharedVideoStream()
+          streamPromise = navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: requestedWidth },
+              height: { ideal: requestedHeight },
+            },
+            audio: false,
+          })
           stream = await streamPromise
-          video.srcObject = buildPreviewStream(stream)
+          video.srcObject = stream
           await video.play()
           updateHeight()
         } catch (error) {
