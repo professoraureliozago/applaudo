@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body { margin: 0; font-family: sans-serif; background: transparent; width: fit-content; }
-      .preview-wrap {
-        max-width: 640px;
-      }
+      .preview-wrap { max-width: 640px; }
       video {
         width: 100%;
         height: auto;
@@ -41,6 +39,7 @@
       const frameId = `video-recorder-${Math.random().toString(36).slice(2)}`
 
       let stream = null
+
       function getHostWindow() {
         try {
           if (window.parent && window.parent !== window) {
@@ -72,16 +71,13 @@
           hub.videoRecorderSession = {
             recorder: null,
             stream: null,
-            chunks: [],
             mimeType: "",
-            status: "idle",
+            sessionId: "",
+            chunkCounter: 0,
+            queue: [],
+            acknowledgedEventId: "",
+            lastSentEventId: "",
             statusText: "Aguardando camera...",
-            pendingValue: null,
-            lastDeliveredTimestamp: 0,
-            acknowledgedTimestamp: 0,
-            lastSentAt: 0,
-            lastUpdatedAt: 0,
-            ownerFrameId: null,
           }
         }
         return hub.videoRecorderSession
@@ -132,14 +128,10 @@
 
       async function ensureSharedVideoStream() {
         const existing = getSharedVideoSource()
-        if (existing) {
-          return existing
-        }
+        if (existing) return existing
 
         const hub = getMediaHub()
-        if (hub.videoStreamPromise) {
-          return hub.videoStreamPromise
-        }
+        if (hub.videoStreamPromise) return hub.videoStreamPromise
 
         hub.videoStreamPromise = navigator.mediaDevices.getUserMedia({
           video: true,
@@ -156,14 +148,10 @@
 
       async function ensureSharedAudioStream() {
         const existing = getSharedAudioSource()
-        if (existing) {
-          return existing
-        }
+        if (existing) return existing
 
         const hub = getMediaHub()
-        if (hub.audioStreamPromise) {
-          return hub.audioStreamPromise
-        }
+        if (hub.audioStreamPromise) return hub.audioStreamPromise
 
         hub.audioStreamPromise = navigator.mediaDevices.getUserMedia({
           video: false,
@@ -186,9 +174,8 @@
 
       function pickRecorderMimeType() {
         const candidates = [
-          "video/webm;codecs=vp9,opus",
           "video/webm;codecs=vp8,opus",
-          "video/webm;codecs=h264,opus",
+          "video/webm;codecs=vp9,opus",
           "video/webm",
         ]
         if (typeof MediaRecorder === "undefined") {
@@ -204,10 +191,7 @@
 
       function attachPreview(mediaStream) {
         const previewStream = buildPreviewStream(mediaStream)
-        if (!previewStream) {
-          return
-        }
-        if (video.srcObject !== previewStream) {
+        if (previewStream && video.srcObject !== previewStream) {
           video.srcObject = previewStream
         }
       }
@@ -252,6 +236,42 @@
         updateFrameHeight()
       }
 
+      function syncQueueWithAck(ackEventId) {
+        const session = getRecorderSession()
+        if (!ackEventId) return
+        session.acknowledgedEventId = ackEventId
+        while (session.queue.length && session.queue[0].event_id === ackEventId) {
+          session.queue.shift()
+        }
+        if (!session.queue.length) {
+          session.lastSentEventId = ""
+        }
+      }
+
+      function enqueueEvent(event) {
+        const session = getRecorderSession()
+        session.queue.push(event)
+      }
+
+      function flushQueue() {
+        const session = getRecorderSession()
+        if (!session.queue.length) {
+          return
+        }
+        const nextEvent = session.queue[0]
+        if (session.acknowledgedEventId === nextEvent.event_id) {
+          session.queue.shift()
+          session.lastSentEventId = ""
+          flushQueue()
+          return
+        }
+        if (session.lastSentEventId === nextEvent.event_id) {
+          return
+        }
+        session.lastSentEventId = nextEvent.event_id
+        setValue(nextEvent)
+      }
+
       function applySessionState() {
         const session = getRecorderSession()
         statusEl.textContent = session.statusText || "Camera pronta"
@@ -260,98 +280,51 @@
         stopBtn.disabled = !isRecording
         if (!video.srcObject) {
           const previewSource = session.stream || getSharedVideoSource()
-          if (previewSource) {
-            attachPreview(previewSource)
-          }
+          if (previewSource) attachPreview(previewSource)
         }
       }
 
-      function flushPendingValue(force = false) {
+      function queueChunk(blob) {
         const session = getRecorderSession()
-        const pending = session.pendingValue
-        if (!pending) {
-          return
+        if (!blob || !blob.size) return
+        const chunkIndex = ++session.chunkCounter
+        const eventId = `${session.sessionId}:chunk:${chunkIndex}`
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          enqueueEvent({
+            event_kind: "chunk",
+            event_id: eventId,
+            session_id: session.sessionId,
+            chunk_index: chunkIndex,
+            mime_type: session.mimeType || "video/webm",
+            timestamp: Date.now(),
+            data_url: reader.result,
+          })
+          flushQueue()
         }
+        reader.readAsDataURL(blob)
+      }
 
-        if (session.acknowledgedTimestamp >= pending.timestamp) {
-          session.lastDeliveredTimestamp = pending.timestamp
-          session.pendingValue = null
-          session.lastSentAt = 0
-          return
-        }
-
-        const now = Date.now()
-        if (!force && session.lastSentAt && now - session.lastSentAt < 1200) {
-          return
-        }
-
-        session.lastSentAt = now
-        setValue(pending)
+      function queueFinalize() {
+        const session = getRecorderSession()
+        const eventId = `${session.sessionId}:finalize`
+        enqueueEvent({
+          event_kind: "finalize",
+          event_id: eventId,
+          session_id: session.sessionId,
+          chunk_index: session.chunkCounter,
+          mime_type: session.mimeType || "video/webm",
+          timestamp: Date.now(),
+        })
+        flushQueue()
       }
 
       function finalizeRecorder(statusText) {
         const session = getRecorderSession()
-        const activeRecorder = session.recorder
-        if (activeRecorder && activeRecorder.state === "recording") {
-          session.status = "stopping"
+        if (session.recorder && session.recorder.state === "recording") {
           session.statusText = statusText || "Finalizando gravacao..."
-          session.lastUpdatedAt = Date.now()
           applySessionState()
-          try {
-            activeRecorder.requestData()
-          } catch (error) {}
-          activeRecorder.stop()
-        }
-      }
-
-      function bindRecorderCallbacks(recorder, session, outputMimeType) {
-        recorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            session.chunks.push(event.data)
-          }
-        }
-        recorder.onerror = (event) => {
-          session.status = "idle"
-          session.statusText = `Erro na gravacao: ${event?.error?.message || "erro desconhecido"}`
-          session.recorder = null
-          session.chunks = []
-          session.lastUpdatedAt = Date.now()
-          applySessionState()
-        }
-        recorder.onstop = () => {
-          const recordedChunks = [...session.chunks]
-          session.recorder = null
-          session.status = "processing"
-          session.statusText = "Preparando video..."
-          session.lastUpdatedAt = Date.now()
-          applySessionState()
-
-          if (!recordedChunks.length) {
-            session.status = "idle"
-            session.statusText = "Nenhum dado de video foi capturado."
-            session.chunks = []
-            session.lastUpdatedAt = Date.now()
-            applySessionState()
-            return
-          }
-
-          const blob = new Blob(recordedChunks, { type: outputMimeType })
-          const reader = new FileReader()
-          reader.onloadend = () => {
-            session.pendingValue = {
-              mime_type: outputMimeType,
-              data_url: reader.result,
-              timestamp: Date.now(),
-            }
-            session.status = "idle"
-            session.statusText = `Gravacao finalizada (${Math.round(blob.size / 1024)} KB) - enviando...`
-            session.chunks = []
-            session.lastSentAt = 0
-            session.lastUpdatedAt = Date.now()
-            flushPendingValue(true)
-            applySessionState()
-          }
-          reader.readAsDataURL(blob)
+          session.recorder.stop()
         }
       }
 
@@ -363,20 +336,35 @@
           return
         }
 
-        session.chunks = []
-        session.pendingValue = null
-        session.mimeType = pickRecorderMimeType()
-        session.status = "recording"
+        session.sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        session.chunkCounter = 0
+        session.queue = []
+        session.lastSentEventId = ""
+        session.mimeType = pickRecorderMimeType() || "video/webm"
         session.statusText = "Gravando..."
-        session.ownerFrameId = frameId
-        session.lastUpdatedAt = Date.now()
 
-        const outputMimeType = session.mimeType || "video/webm"
         const activeRecorder = session.mimeType ? new MediaRecorder(stream, { mimeType: session.mimeType }) : new MediaRecorder(stream)
         session.recorder = activeRecorder
         session.stream = stream
-        bindRecorderCallbacks(activeRecorder, session, outputMimeType)
-        activeRecorder.start(1000)
+
+        activeRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            queueChunk(event.data)
+          }
+        }
+        activeRecorder.onerror = (event) => {
+          session.statusText = `Erro na gravacao: ${event?.error?.message || "erro desconhecido"}`
+          session.recorder = null
+          applySessionState()
+        }
+        activeRecorder.onstop = () => {
+          session.recorder = null
+          session.statusText = "Gravacao finalizada - fechando arquivo..."
+          queueFinalize()
+          applySessionState()
+        }
+
+        activeRecorder.start(3000)
         applySessionState()
       }
 
@@ -385,20 +373,8 @@
       }
 
       function onRender(args) {
-        const session = getRecorderSession()
-        const ackTimestamp = Number(args?.ack_timestamp || 0)
-        if (Number.isFinite(ackTimestamp) && ackTimestamp > 0) {
-          session.acknowledgedTimestamp = ackTimestamp
-          if (session.pendingValue && ackTimestamp >= session.pendingValue.timestamp) {
-            session.lastDeliveredTimestamp = session.pendingValue.timestamp
-            session.pendingValue = null
-            session.lastSentAt = 0
-            if (session.status === "idle") {
-              session.statusText = "Video salvo com sucesso."
-            }
-          }
-        }
-        flushPendingValue(false)
+        syncQueueWithAck(String(args?.ack_event_id || ""))
+        flushQueue()
         applySessionState()
       }
 

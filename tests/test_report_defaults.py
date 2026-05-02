@@ -171,6 +171,28 @@ def test_move_draft_videos_to_exam_moves_unassigned_video(tmp_path, monkeypatch)
     assert not draft_video.exists()
 
 
+def test_append_video_chunk_and_finalize_for_exam(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    app._append_video_chunk(exam_id=21, session_id="sess1", mime_type="video/webm", chunk_bytes=b"abc")
+    app._append_video_chunk(exam_id=21, session_id="sess1", mime_type="video/webm", chunk_bytes=b"def")
+
+    final_path = app._finalize_video_chunks(exam_id=21, session_id="sess1", mime_type="video/webm")
+
+    assert final_path is not None
+    assert final_path.suffix == ".webm"
+    assert final_path.exists()
+    assert final_path.read_bytes() == b"abcdef"
+
+
+def test_finalize_video_chunks_returns_none_without_draft(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    final_path = app._finalize_video_chunks(exam_id=21, session_id="missing", mime_type="video/webm")
+
+    assert final_path is None
+
+
 def test_numbered_conclusion_uses_only_findings_added_to_target_sections():
     report = ReportData()
     report.ensure_sections()
